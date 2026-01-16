@@ -1,0 +1,23 @@
+# Terraform
+.terraform/
+terraform.tfstate
+terraform.tfstate.*
+*.tfstate.backup
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# macOS
+.DS_Store
+
+# Screenshots
+*.png
