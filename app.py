@@ -4,17 +4,47 @@ import os
 import re
 import threading
 import time
+import json
 
 app = Flask(__name__)
 
-TFVARS_FILE = 'terraform.tfvars'
+TEMPLATES_DIR = 'templates'
 
 # Global variable to store apply status
-apply_status = {'running': False, 'output': '', 'success': None}
+apply_status = {'running': False, 'output': '', 'success': None, 'template': None}
 
-def load_tfvars():
+# Global variable to store apply status
+apply_status = {'running': False, 'output': '', 'success': None, 'template': None}
+
+def get_available_templates():
+    """Get list of available templates"""
+    templates = []
+    if os.path.exists(TEMPLATES_DIR):
+        for item in os.listdir(TEMPLATES_DIR):
+            template_path = os.path.join(TEMPLATES_DIR, item)
+            if os.path.isdir(template_path) and os.path.exists(os.path.join(template_path, 'terraform.tfvars')):
+                templates.append({
+                    'name': item,
+                    'path': template_path,
+                    'description': get_template_description(item)
+                })
+    return templates
+
+def get_template_description(template_name):
+    """Get description for a template"""
+    descriptions = {
+        'Azure VNet Injection Workspace': 'Deploy a secure Databricks workspace with VNet injection for enhanced network isolation and security.'
+    }
+    return descriptions.get(template_name, f'Deploy {template_name} workspace')
+
+def get_tfvars_path(template_name):
+    """Get the path to terraform.tfvars for a template"""
+    return os.path.join(TEMPLATES_DIR, template_name, 'terraform.tfvars')
+
+def load_tfvars(template_name):
     data = {}
-    with open(TFVARS_FILE, 'r') as f:
+    tfvars_path = get_tfvars_path(template_name)
+    with open(tfvars_path, 'r') as f:
         content = f.read()
     
     # Simple parsing for tfvars
@@ -58,7 +88,7 @@ def load_tfvars():
         i += 1
     return data
 
-def save_tfvars(data):
+def save_tfvars(data, template_name):
     content = []
     for key, value in data.items():
         if isinstance(value, bool):
@@ -70,16 +100,19 @@ def save_tfvars(data):
             content.append('}')
         else:
             content.append(f'{key} = "{value}"')
-    with open(TFVARS_FILE, 'w') as f:
+    tfvars_path = get_tfvars_path(template_name)
+    with open(tfvars_path, 'w') as f:
         f.write('\n'.join(content))
 
-def run_terraform_apply_async():
+def run_terraform_apply_async(template_name):
     global apply_status
     apply_status['running'] = True
     apply_status['output'] = ''
     apply_status['success'] = None
+    apply_status['template'] = template_name
+    template_path = os.path.join(TEMPLATES_DIR, template_name)
     try:
-        process = subprocess.Popen(['terraform', 'apply', '-auto-approve'], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, cwd=os.getcwd())
+        process = subprocess.Popen(['terraform', 'apply', '-auto-approve'], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, cwd=template_path)
         while True:
             output = process.stdout.readline()
             if output == '' and process.poll() is not None:
@@ -92,12 +125,142 @@ def run_terraform_apply_async():
         apply_status['success'] = False
     apply_status['running'] = False
 
-@app.route('/', methods=['GET', 'POST'])
+@app.route('/', methods=['GET'])
 def index():
+    templates = get_available_templates()
+    return render_template_string('''
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Databricks Workspace Creator</title>
+        <style>
+            body { 
+                font-family: 'Inter', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+                background: linear-gradient(135deg, #0f0f0f 0%, #1a1a1a 100%); 
+                color: #ffffff; 
+                margin: 0; 
+                padding: 0; 
+                min-height: 100vh;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+            }
+            .container { 
+                max-width: 900px; 
+                margin: 40px auto; 
+                background: #1a1a1a; 
+                padding: 60px; 
+                border-radius: 16px; 
+                box-shadow: 0 8px 32px rgba(0,0,0,0.4); 
+                border: 1px solid #333; 
+                text-align: center;
+            }
+            h1 { 
+                color: #00b3ff; 
+                margin-bottom: 24px; 
+                font-weight: 700; 
+                font-size: 48px; 
+                text-transform: uppercase;
+                letter-spacing: 2px;
+            }
+            .subtitle { 
+                color: #cccccc; 
+                font-size: 18px; 
+                line-height: 1.6; 
+                margin-bottom: 50px;
+                font-weight: 400;
+            }
+            .templates { 
+                display: grid;
+                gap: 20px;
+                margin-bottom: 40px;
+            }
+            .template-card { 
+                background: #2a2a2a; 
+                border: 1px solid #444; 
+                border-radius: 12px; 
+                padding: 30px; 
+                text-align: left;
+                transition: all 0.3s ease;
+                cursor: pointer;
+                text-decoration: none;
+                color: #ffffff;
+                display: block;
+            }
+            .template-card:hover { 
+                border-color: #00b3ff; 
+                box-shadow: 0 4px 16px rgba(0,179,255,0.2);
+                transform: translateY(-2px);
+            }
+            .template-title { 
+                color: #00b3ff; 
+                font-size: 24px; 
+                font-weight: 600; 
+                margin-bottom: 12px;
+            }
+            .template-description { 
+                color: #cccccc; 
+                font-size: 16px; 
+                line-height: 1.5;
+                margin-bottom: 16px;
+            }
+            .template-features { 
+                color: #888; 
+                font-size: 14px;
+            }
+            .template-features ul { 
+                list-style: none; 
+                padding: 0; 
+                margin: 0;
+            }
+            .template-features li { 
+                padding: 4px 0;
+            }
+            .template-features li:before { 
+                content: "✓ "; 
+                color: #00b3ff; 
+                font-weight: bold;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <h1>Welcome to Databricks Workspace Creator</h1>
+            <p class="subtitle">This tool enables you to create a production-grade Databricks workspace following industry best practices in an intuitive and user-friendly way.</p>
+            
+            <div class="templates">
+                {% for template in templates %}
+                <a href="/configure/{{ template.name | urlencode }}" class="template-card">
+                    <div class="template-title">{{ template.name }}</div>
+                    <div class="template-description">{{ template.description }}</div>
+                    <div class="template-features">
+                        <ul>
+                            {% if 'VNet' in template.name %}
+                            <li>Private networking with VNet injection</li>
+                            <li>Network security groups and NAT gateway</li>
+                            <li>Azure resource group isolation</li>
+                            <li>Production-ready security configuration</li>
+                            {% else %}
+                            <li>Standard Databricks workspace deployment</li>
+                            <li>Basic networking configuration</li>
+                            <li>Quick setup for development</li>
+                            {% endif %}
+                        </ul>
+                    </div>
+                </a>
+                {% endfor %}
+            </div>
+        </div>
+    </body>
+    </html>
+    ''', templates=templates)
+
+@app.route('/configure/<path:template_name>', methods=['GET', 'POST'])
+def configure(template_name):
     global apply_status
     if request.method == 'POST':
         # Update tfvars
-        data = load_tfvars()
+        data = load_tfvars(template_name)
         for key in request.form:
             if key in data:
                 if isinstance(data[key], bool):
@@ -111,19 +274,19 @@ def index():
                         pass
                 else:
                     data[key] = request.form[key]
-        save_tfvars(data)
+        save_tfvars(data, template_name)
         
         # Run terraform apply in background
-        threading.Thread(target=run_terraform_apply_async).start()
+        threading.Thread(target=run_terraform_apply_async, args=(template_name,)).start()
         
         return redirect(url_for('status'))
     
-    data = load_tfvars()
+    data = load_tfvars(template_name)
     return render_template_string('''
     <!DOCTYPE html>
     <html>
     <head>
-        <title>Terraform Configuration</title>
+        <title>Terraform Configuration - {{ template_name }}</title>
         <style>
             body { font-family: 'Inter', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #0f0f0f; color: #ffffff; margin: 0; padding: 20px; }
             .container { max-width: 900px; margin: 0 auto; background: #1a1a1a; padding: 40px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.3); border: 1px solid #333; }
@@ -140,11 +303,14 @@ def index():
             .btn { background: linear-gradient(135deg, #00b3ff 0%, #0078d4 100%); color: white; padding: 14px 28px; border: none; border-radius: 8px; cursor: pointer; font-size: 16px; font-weight: 600; width: 100%; transition: all 0.2s ease; }
             .btn:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,179,255,0.3); }
             .btn:active { transform: translateY(0); }
+            .back-btn { background: #444; color: #cccccc; padding: 8px 16px; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; text-decoration: none; display: inline-block; margin-bottom: 20px; transition: all 0.2s ease; }
+            .back-btn:hover { background: #555; color: #ffffff; }
         </style>
     </head>
     <body>
         <div class="container">
-            <h1>Terraform Variables Configuration</h1>
+            <a href="/" class="back-btn">← Back to Templates</a>
+            <h1>Terraform Variables Configuration - {{ template_name }}</h1>
             <form method="post">
                 {% for key, value in data.items() %}
                 <div class="form-group">
@@ -167,7 +333,7 @@ def index():
         </div>
     </body>
     </html>
-    ''', data=data)
+    ''', template_name=template_name, data=data)
 
 @app.route('/status')
 def status():
