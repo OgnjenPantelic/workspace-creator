@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+
+{% block title %}Databricks Workspace Creator{% endblock %}
+
+{% block content %}
+<div class="container">
+    <h1>Databricks Workspace Creator</h1>
+    <p class="subtitle">This tool enables you to create a production-grade Databricks workspace following industry best practices in an intuitive and user-friendly way.</p>
+
+    <h2>Choose your cloud:</h2>
+
+    <div class="cloud-selection">
+        <a href="{{ url_for('azure.azure_templates') }}" class="cloud-card azure">
+            <div class="cloud-name">Azure</div>
+        </a>
+
+        <div class="cloud-card aws">
+            <div class="cloud-name">AWS</div>
+            <div class="coming-soon">Coming Soon</div>
+        </div>
+
+        <div class="cloud-card gcp">
+            <div class="cloud-name">GCP</div>
+            <div class="coming-soon">Coming Soon</div>
+        </div>
+    </div>
+</div>
+{% endblock %}

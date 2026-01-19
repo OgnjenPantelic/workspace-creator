@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+
+{% block title %}Terraform Configuration - {{ template_name }}{% endblock %}
+
+{% block content %}
+<div class="container">
+    <a href="{{ url_for('main.index') }}" class="back-btn">← Back to Templates</a>
+    <h1>Terraform Variables Configuration - {{ template_name }}</h1>
+    <form method="post">
+        {% for key, value in data.items() %}
+        <div class="form-group">
+            {% if key == 'tenant_id' %}
+            <label>{{ key }} <span class="info-icon">i</span></label>
+            <input type="text" name="{{ key }}" value="{{ value }}">
+            {% elif value is boolean %}
+            <label class="checkbox-label"><input type="checkbox" name="{{ key }}" {% if value %}checked{% endif %}> {{ key }}</label>
+            {% elif value is mapping %}
+            <label>{{ key }} (JSON):</label>
+            <textarea name="{{ key }}" rows="4">{{ value | tojson }}</textarea>
+            {% else %}
+            <label>{{ key }}:</label>
+            <input type="text" name="{{ key }}" value="{{ value }}">
+            {% endif %}
+        </div>
+        {% endfor %}
+        <button type="submit" class="btn">Save and Apply</button>
+    </form>
+</div>
+{% endblock %}

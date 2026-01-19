@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+
+{% block title %}Azure Templates - Databricks Workspace Creator{% endblock %}
+
+{% block content %}
+<div class="container">
+    <a href="{{ url_for('main.index') }}" class="back-btn">← Back to Cloud Selection</a>
+    <h1>Azure Templates</h1>
+    <p class="subtitle">Choose from our available Azure Databricks workspace templates.</p>
+
+    <div class="templates">
+        {% for template in templates %}
+        <a href="{{ url_for('azure.prerequisites', template_name=template.name) }}" class="template-card">
+            <div class="template-title">{{ template.name }}</div>
+            <div class="template-description">{{ template.description }}</div>
+            <div class="template-features">
+                <ul>
+                    <li>Private networking with VNet injection</li>
+                    <li>Network security groups and NAT gateway</li>
+                    <li>Azure resource group isolation</li>
+                    <li>Production-ready security configuration</li>
+                </ul>
+            </div>
+        </a>
+        {% endfor %}
+    </div>
+</div>
+{% endblock %}
