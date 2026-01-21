@@ -60,7 +60,7 @@ pip install -r requirements.txt
 
 3. Run the application:
 ```bash
-python app.py
+python run.py
 ```
 
 The application will be available at `http://localhost:5000`.
