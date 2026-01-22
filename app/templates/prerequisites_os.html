@@ -7,7 +7,11 @@
     <h1>🚀 Prerequisites for {{ os_name }}</h1>
     <p class="subtitle">Installation instructions and prerequisites for deploying {{ template_name }} on {{ os_name }}.</p>
 
+    {% if cloud == 'aws' %}
+    <a href="{{ url_for('aws.os_selection', template_name=template_name) }}" class="back-btn">← Change Operating System</a>
+    {% else %}
     <a href="{{ url_for('azure.os_selection', template_name=template_name) }}" class="back-btn">← Change Operating System</a>
+    {% endif %}
 
     <div class="prereq-section">
         <div class="prereq-title">What is Terraform?</div>
@@ -41,6 +45,17 @@ choco install terraform
             </div>
 
             <div class="step">
+                {% if cloud == 'aws' %}
+                <div class="step-number">3. Install AWS CLI</div>
+                <p>Download the AWS CLI MSI installer:</p>
+                <div class="code-block">
+# Download from: https://aws.amazon.com/cli/<br>
+# Or use Chocolatey:<br>
+choco install awscli
+                </div>
+                <p>Configure AWS credentials:</p>
+                <div class="code-block">aws configure</div>
+                {% else %}
                 <div class="step-number">3. Install Azure CLI</div>
                 <p>Download the Azure CLI MSI installer:</p>
                 <div class="code-block">
@@ -50,6 +65,7 @@ choco install azure-cli
                 </div>
                 <p>Login to Azure:</p>
                 <div class="code-block">az login</div>
+                {% endif %}
             </div>
         </div>
     </div>
@@ -101,11 +117,19 @@ brew install hashicorp/tap/terraform
             </div>
 
             <div class="step">
+                {% if cloud == 'aws' %}
+                <div class="step-number">4. Install AWS CLI</div>
+                <p>Use Homebrew to install AWS CLI:</p>
+                <div class="code-block">brew install awscli</div>
+                <p>Configure AWS credentials:</p>
+                <div class="code-block">aws configure</div>
+                {% else %}
                 <div class="step-number">4. Install Azure CLI</div>
                 <p>Use Homebrew to install Azure CLI:</p>
                 <div class="code-block">brew install azure-cli</div>
                 <p>Login to Azure:</p>
                 <div class="code-block">az login</div>
+                {% endif %}
             </div>
         </div>
     </div>
@@ -160,6 +184,23 @@ sudo dnf install terraform
             </div>
 
             <div class="step">
+                {% if cloud == 'aws' %}
+                <div class="step-number">3. Install AWS CLI</div>
+                <p>For Ubuntu/Debian:</p>
+                <div class="code-block">
+curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"<br>
+unzip awscliv2.zip<br>
+sudo ./aws/install
+                </div>
+                <p>For Fedora/RHEL/CentOS:</p>
+                <div class="code-block">
+curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"<br>
+unzip awscliv2.zip<br>
+sudo ./aws/install
+                </div>
+                <p>Configure AWS credentials:</p>
+                <div class="code-block">aws configure</div>
+                {% else %}
                 <div class="step-number">3. Install Azure CLI</div>
                 <p>For Ubuntu/Debian:</p>
                 <div class="code-block">
@@ -172,6 +213,7 @@ sudo dnf install azure-cli
                 </div>
                 <p>Login to Azure:</p>
                 <div class="code-block">az login</div>
+                {% endif %}
             </div>
         </div>
     </div>
@@ -197,11 +239,20 @@ sudo dnf install azure-cli
     <div class="prereq-section">
         <div class="prereq-title">Cloud Provider Access</div>
         <div class="prereq-content">
+            {% if cloud == 'aws' %}
+            <p>You need appropriate permissions in your AWS account:</p>
+            <ul>
+                <li><strong>AWS:</strong> IAM permissions to create VPC, subnets, security groups, S3 buckets, and IAM roles</li>
+                <li>Permissions to deploy Databricks workspaces (typically requires admin or power user access)</li>
+                <li>Access keys configured via <code>aws configure</code></li>
+            </ul>
+            {% else %}
             <p>You need appropriate permissions in your Azure account:</p>
             <ul>
                 <li><strong>Azure:</strong> Contributor or Owner role on the subscription/resource group</li>
                 <li>Permissions to create resource groups, virtual networks, and Databricks workspaces</li>
             </ul>
+            {% endif %}
         </div>
     </div>
 
@@ -222,7 +273,11 @@ sudo dnf install azure-cli
         <div class="prereq-content">
             <p>Once you have all the prerequisites installed, download the Terraform template:</p>
             <div class="text-center" style="margin: 30px 0;">
+                {% if cloud == 'aws' %}
+                <a href="{{ url_for('aws.download_clean_template', template_name=template_name) }}" class="btn download-btn">📥 Download {{ template_name }} Template</a>
+                {% else %}
                 <a href="{{ url_for('azure.download_clean_template', template_name=template_name) }}" class="btn download-btn">📥 Download {{ template_name }} Template</a>
+                {% endif %}
             </div>
         </div>
     </div>

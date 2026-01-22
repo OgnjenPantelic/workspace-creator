@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+
+{% block title %}AWS Templates - Databricks Workspace Creator{% endblock %}
+
+{% block content %}
+<div class="container">
+    <a href="{{ url_for('main.index') }}" class="back-btn">← Back to Cloud Selection</a>
+    <h1>AWS Templates</h1>
+    <p class="subtitle">Choose from our available AWS Databricks workspace templates.</p>
+
+    <div class="templates">
+        {% for template in templates %}
+        <a href="{{ url_for('aws.os_selection', template_name=template.name) }}" class="template-card">
+            <div class="template-title">{{ template.name }}</div>
+            <div class="template-description">{{ template.description }}</div>
+            <div class="template-features">
+                <ul>
+                    <li>Customer-managed VPC (BYOVPC)</li>
+                    <li>Private and public subnet configuration</li>
+                    <li>Security groups and IAM roles</li>
+                    <li>Unity Catalog integration</li>
+                    <li>Enterprise-ready architecture</li>
+                </ul>
+            </div>
+        </a>
+        {% endfor %}
+    </div>
+</div>
+{% endblock %}

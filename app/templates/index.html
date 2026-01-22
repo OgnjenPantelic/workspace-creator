@@ -15,11 +15,10 @@
             <div class="cloud-name">Azure</div>
         </a>
 
-        <div class="cloud-card aws">
+        <a href="{{ url_for('aws.aws_templates') }}" class="cloud-card aws">
             <img src="{{ url_for('static', filename='images/aws.png') }}" alt="AWS" class="cloud-icon">
             <div class="cloud-name">AWS</div>
-            <div class="coming-soon">Coming Soon</div>
-        </div>
+        </a>
 
         <div class="cloud-card gcp">
             <img src="{{ url_for('static', filename='images/gcp.png') }}" alt="GCP" class="cloud-icon">
