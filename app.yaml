@@ -1,0 +1,10 @@
+command:
+  - gunicorn
+  - -w
+  - "4"
+  - wsgi:app
+env:
+  - name: FLASK_DEBUG
+    value: "false"
+  - name: PYTHONUNBUFFERED
+    value: "1"
