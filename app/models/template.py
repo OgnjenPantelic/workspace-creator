@@ -12,7 +12,8 @@ class Template:
     def _get_default_description(self) -> str:
         """Get default description for template"""
         descriptions = {
-            'Azure VNet Injection Workspace': 'Deploy a secure Databricks workspace with VNet injection for enhanced network isolation and security.'
+            'azure-simple': 'Deploy a secure Databricks workspace with VNet injection for enhanced network isolation and security.',
+            'aws-simple': 'Deploy a Databricks workspace on AWS with BYOVPC for secure networking and custom VPC configuration.'
         }
         return descriptions.get(self.name, f'Deploy {self.name} workspace')
 

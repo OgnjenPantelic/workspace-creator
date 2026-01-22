@@ -17,6 +17,20 @@ def azure_templates():
     templates = template_manager.get_available_templates()
     return render_template('azure_templates.html', templates=templates)
 
+@azure_bp.route('/os-selection/<path:template_name>', methods=['GET'])
+def os_selection(template_name):
+    return render_template('os_selection.html', template_name=template_name)
+
+@azure_bp.route('/prerequisites/<path:template_name>/<os>', methods=['GET'])
+def prerequisites_os(template_name, os):
+    os_names = {
+        'windows': 'Windows',
+        'mac': 'macOS',
+        'linux': 'Linux'
+    }
+    os_name = os_names.get(os, 'Unknown')
+    return render_template('prerequisites_os.html', template_name=template_name, os=os, os_name=os_name)
+
 @azure_bp.route('/prerequisites/<path:template_name>', methods=['GET'])
 def prerequisites(template_name):
     return render_template('prerequisites.html', template_name=template_name)

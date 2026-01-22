@@ -10,7 +10,7 @@
 
     <div class="templates">
         {% for template in templates %}
-        <a href="{{ url_for('azure.prerequisites', template_name=template.name) }}" class="template-card">
+        <a href="{{ url_for('azure.os_selection', template_name=template.name) }}" class="template-card">
             <div class="template-title">{{ template.name }}</div>
             <div class="template-description">{{ template.description }}</div>
             <div class="template-features">
