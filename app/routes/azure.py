@@ -15,7 +15,9 @@ template_manager = TemplateManager(Config.TEMPLATES_DIR)
 @azure_bp.route('/azure', methods=['GET'])
 def azure_templates():
     templates = template_manager.get_available_templates()
-    return render_template('azure_templates.html', templates=templates)
+    # Filter only Azure templates
+    azure_templates = [t for t in templates if 'azure' in t.name.lower()]
+    return render_template('azure_templates.html', templates=azure_templates)
 
 @azure_bp.route('/os-selection/<path:template_name>', methods=['GET'])
 def os_selection(template_name):

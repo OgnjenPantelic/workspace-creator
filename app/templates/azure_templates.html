@@ -4,25 +4,60 @@
 
 {% block content %}
 <div class="container">
-    <a href="{{ url_for('main.index') }}" class="back-btn">← Back to Cloud Selection</a>
+    <a href="{{ url_for('main.cloud_selection') }}" class="back-btn">← Back to Cloud Selection</a>
     <h1>Azure Templates</h1>
-    <p class="subtitle">Choose from our available Azure Databricks workspace templates.</p>
+    <p class="subtitle">Choose the security and networking configuration that best fits your requirements.</p>
+
+    <div style="max-width: 700px; margin: 30px auto 40px; background: rgba(255, 107, 53, 0.08); border: 1px solid #ff6b35; border-radius: 8px; padding: 20px 25px; cursor: pointer; transition: all 0.3s ease;" onmouseover="this.style.background='rgba(255, 107, 53, 0.12)'" onmouseout="this.style.background='rgba(255, 107, 53, 0.08)'">
+        <div style="display: flex; align-items: center; gap: 15px;">
+            <div style="font-size: 2em;">💬</div>
+            <div style="flex: 1;">
+                <p style="margin: 0; font-size: 1.1em; color: #ff6b35; font-weight: 500;">
+                    Help me determine which deployment is best fitted for me
+                </p>
+                <p style="margin: 5px 0 0 0; font-size: 0.9em; color: #b3b3b3; font-style: italic;">
+                    AI agent will be here
+                </p>
+            </div>
+            <div style="color: #ff6b35; font-size: 1.5em;">→</div>
+        </div>
+    </div>
 
     <div class="templates">
         {% for template in templates %}
         <a href="{{ url_for('azure.os_selection', template_name=template.name) }}" class="template-card">
-            <div class="template-title">{{ template.name }}</div>
-            <div class="template-description">{{ template.description }}</div>
+            <div class="template-title">Standard VNet Injected Workspace</div>
+            <div class="template-description">Secure baseline deployment with customer-managed networking</div>
             <div class="template-features">
                 <ul>
-                    <li>Private networking with VNet injection</li>
-                    <li>Network security groups and NAT gateway</li>
-                    <li>Azure resource group isolation</li>
-                    <li>Production-ready security configuration</li>
+                    <li><strong>Private networking</strong> with VNet injection for network isolation</li>
+                    <li><strong>Network security groups</strong> controlling inbound/outbound traffic</li>
+                    <li><strong>NAT gateway</strong> for secure outbound internet access</li>
+                    <li><strong>Azure resource group</strong> isolation for governance</li>
+                    <li><strong>Production-ready</strong> security configuration out of the box</li>
+                    <li><strong>Upgradeable</strong> to maximum security workspace when needed</li>
                 </ul>
             </div>
         </a>
         {% endfor %}
+        
+        <div class="template-card" style="opacity: 0.6; cursor: not-allowed; position: relative;">
+            <div style="position: absolute; top: 20px; right: 20px; background: #ff6b35; color: white; padding: 5px 15px; border-radius: 4px; font-size: 0.85em; font-weight: 600;">
+                Coming Soon
+            </div>
+            <div class="template-title">Maximum Security Workspace</div>
+            <div class="template-description">Enterprise-grade security with Private Link and enhanced compliance</div>
+            <div class="template-features">
+                <ul>
+                    <li><strong>All Standard features</strong> included as foundation</li>
+                    <li><strong>Private Link</strong> for fully private connectivity to control plane and storage</li>
+                    <li><strong>No public endpoints</strong> eliminating internet exposure</li>
+                    <li><strong>Enhanced compliance</strong> meeting strictest regulatory requirements</li>
+                    <li><strong>Ideal for banking,</strong> healthcare, and highly regulated industries</li>
+                    <li><strong>Complete network isolation</strong> with zero trust architecture</li>
+                </ul>
+            </div>
+        </div>
     </div>
 </div>
 {% endblock %}
