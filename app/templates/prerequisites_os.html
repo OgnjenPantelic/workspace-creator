@@ -32,16 +32,12 @@
 # Or use Chocolatey package manager:<br>
 choco install terraform
                 </div>
-                <p>Verify installation:</p>
-                <div class="code-block">terraform version</div>
             </div>
 
             <div class="step">
                 <div class="step-number">2. Install Python 3</div>
                 <p>Download and install Python from python.org or use Chocolatey:</p>
                 <div class="code-block">choco install python</div>
-                <p>Verify installation:</p>
-                <div class="code-block">python --version</div>
             </div>
 
             <div class="step">
@@ -70,23 +66,6 @@ choco install azure-cli
         </div>
     </div>
 
-    <div class="prereq-section">
-        <div class="prereq-title">Running the Local Deployment UI</div>
-        <div class="prereq-content">
-            <p>After downloading and extracting the template:</p>
-            <div class="step">
-                <div class="step-number">1. Open PowerShell or Command Prompt</div>
-                <p>Navigate to the extracted template directory:</p>
-                <div class="code-block">cd path\to\extracted\template</div>
-            </div>
-            <div class="step">
-                <div class="step-number">2. Run the deployment UI</div>
-                <div class="code-block">python deploy.py</div>
-                <p>The web interface will open at <strong>http://localhost:8080</strong></p>
-            </div>
-        </div>
-    </div>
-
     {% elif os == 'mac' %}
     <div class="prereq-section">
         <div class="prereq-title">Required Software for macOS</div>
@@ -104,16 +83,12 @@ choco install azure-cli
 brew tap hashicorp/tap<br>
 brew install hashicorp/tap/terraform
                 </div>
-                <p>Verify installation:</p>
-                <div class="code-block">terraform version</div>
             </div>
 
             <div class="step">
                 <div class="step-number">3. Install Python 3</div>
                 <p>macOS comes with Python, but install the latest version:</p>
                 <div class="code-block">brew install python</div>
-                <p>Verify installation:</p>
-                <div class="code-block">python3 --version</div>
             </div>
 
             <div class="step">
@@ -130,23 +105,6 @@ brew install hashicorp/tap/terraform
                 <p>Login to Azure:</p>
                 <div class="code-block">az login</div>
                 {% endif %}
-            </div>
-        </div>
-    </div>
-
-    <div class="prereq-section">
-        <div class="prereq-title">Running the Local Deployment UI</div>
-        <div class="prereq-content">
-            <p>After downloading and extracting the template:</p>
-            <div class="step">
-                <div class="step-number">1. Open Terminal</div>
-                <p>Navigate to the extracted template directory:</p>
-                <div class="code-block">cd ~/Downloads/extracted-template</div>
-            </div>
-            <div class="step">
-                <div class="step-number">2. Run the deployment UI</div>
-                <div class="code-block">python3 deploy.py</div>
-                <p>The web interface will open at <strong>http://localhost:8080</strong></p>
             </div>
         </div>
     </div>
@@ -169,8 +127,6 @@ sudo dnf install -y dnf-plugins-core<br>
 sudo dnf config-manager --add-repo https://rpm.releases.hashicorp.com/fedora/hashicorp.repo<br>
 sudo dnf install terraform
                 </div>
-                <p>Verify installation:</p>
-                <div class="code-block">terraform version</div>
             </div>
 
             <div class="step">
@@ -179,8 +135,6 @@ sudo dnf install terraform
                 <div class="code-block">sudo apt install python3 python3-pip</div>
                 <p>For Fedora/RHEL/CentOS:</p>
                 <div class="code-block">sudo dnf install python3 python3-pip</div>
-                <p>Verify installation:</p>
-                <div class="code-block">python3 --version</div>
             </div>
 
             <div class="step">
@@ -214,23 +168,6 @@ sudo dnf install azure-cli
                 <p>Login to Azure:</p>
                 <div class="code-block">az login</div>
                 {% endif %}
-            </div>
-        </div>
-    </div>
-
-    <div class="prereq-section">
-        <div class="prereq-title">Running the Local Deployment UI</div>
-        <div class="prereq-content">
-            <p>After downloading and extracting the template:</p>
-            <div class="step">
-                <div class="step-number">1. Open Terminal</div>
-                <p>Navigate to the extracted template directory:</p>
-                <div class="code-block">cd ~/Downloads/extracted-template</div>
-            </div>
-            <div class="step">
-                <div class="step-number">2. Run the deployment UI</div>
-                <div class="code-block">python3 deploy.py</div>
-                <p>The web interface will open at <strong>http://localhost:8080</strong></p>
             </div>
         </div>
     </div>
@@ -278,6 +215,10 @@ sudo dnf install azure-cli
                 {% else %}
                 <a href="{{ url_for('azure.download_clean_template', template_name=template_name) }}" class="btn download-btn">📥 Download {{ template_name }} Template</a>
                 {% endif %}
+            </div>
+            <div class="step" style="margin-top: 20px;">
+                <div class="step-number">Next Step: Open README.txt from the downloaded folder</div>
+                <p>After downloading and extracting the template, open the <strong>README.txt</strong> file in the folder for complete setup instructions.</p>
             </div>
         </div>
     </div>

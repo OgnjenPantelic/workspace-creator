@@ -4,21 +4,30 @@ This Terraform template deploys a production-grade Databricks workspace on Azure
 
 ## 🚀 Quick Start (2 minutes)
 
-### Step 1: Install Python Dependencies
+### Step 1: Create Virtual Environment (First Time Only)
 ```bash
 # macOS/Linux
-pip3 install -r requirements.txt
+python3 -m venv venv
+source venv/bin/activate
 
-# Windows
+# Windows (Command Prompt)
+python -m venv venv
+venv\Scripts\activate
+
+# Windows (PowerShell)
+python -m venv venv
+venv\Scripts\Activate.ps1
+```
+
+### Step 2: Install Python Dependencies
+```bash
+# After activating virtual environment above
 pip install -r requirements.txt
 ```
 
-### Step 2: Run the Deployment UI
+### Step 3: Run the Deployment UI
 ```bash
-# macOS/Linux
-python3 deploy.py
-
-# Windows
+# Make sure virtual environment is activated (you should see (venv) in your prompt)
 python deploy.py
 ```
 
@@ -27,7 +36,7 @@ The web interface will automatically open at **http://localhost:8081**
 ### Step 3: Configure and Deploy
 1. Fill in your configuration values in the web UI
 2. Click "Save Configuration"
-3. Click "Run Terraform Plan" to preview changes
+3. Click 4Run Terraform Plan" to preview changes
 4. Click "Apply Configuration" to deploy
 
 That's it! ✨
