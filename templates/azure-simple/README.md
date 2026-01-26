@@ -1,8 +1,8 @@
-# AWS Databricks Workspace - Standard BYOVPC
+# Azure Databricks Workspace - Standard VNet Injected
 
-This Terraform template deploys a production-grade Databricks workspace on AWS with customer-managed VPC.
+This Terraform template deploys a production-grade Databricks workspace on Azure with secure networking.
 
-## �� Quick Start (2 minutes)
+## 🚀 Quick Start (2 minutes)
 
 ### Step 1: Install Python Dependencies
 ```bash
@@ -41,17 +41,17 @@ Before running the deployment, ensure you have:
 ### Required Software
 - **Python 3.7+** - [Download here](https://www.python.org/downloads/)
 - **Terraform CLI** - [Download here](https://www.terraform.io/downloads)
-- **AWS CLI** - [Download here](https://aws.amazon.com/cli/)
+- **Azure CLI** - [Download here](https://docs.microsoft.com/en-us/cli/azure/install-azure-cli)
 
-### AWS Setup
-1. Configure AWS CLI with your credentials:
+### Azure Setup
+1. Log in to Azure CLI:
    ```bash
-   aws configure
+   az login
    ```
-   
-2. Verify your AWS credentials are working:
+
+2. Verify you have the correct subscription selected:
    ```bash
-   aws sts get-caller-identity
+   az account show
    ```
 
 ### Databricks Account
@@ -65,13 +65,12 @@ You'll need the following from your Databricks account:
 ## 🏗️ What Will Be Deployed
 
 This template creates:
-- **Databricks Workspace** with customer-managed VPC (BYOVPC)
-- **VPC** with private and public subnets across availability zones
-- **Security Groups** controlling inbound/outbound traffic
-- **NAT Gateways** for secure outbound internet access from private subnets
-- **IAM Roles and Policies** for fine-grained access control
-- **S3 Root Storage Bucket** with encryption and logging
-- **Unity Catalog Configuration** (optional, if metastore configured)
+- **Databricks Workspace** with VNet injection for network isolation
+- **Virtual Network (VNet)** with private and public subnets
+- **Network Security Groups (NSGs)** controlling traffic
+- **NAT Gateway** for secure outbound internet access
+- **Azure Resource Group** for organized resource management
+- **Unity Catalog Metastore** (optional, if configured)
 
 ---
 
@@ -99,13 +98,28 @@ Edit `terraform.tfvars` directly, then run terraform commands.
 
 ---
 
+## ⚙️ Configuration Variables
+
+Key variables to configure in the UI or `terraform.tfvars`:
+
+| Variable | Description | Example |
+|----------|-------------|---------|
+| `databricks_account_id` | Your Databricks account ID | `00000000-0000-0000-0000-000000000000` |
+| `databricks_client_id` | Service principal client ID | `00000000-0000-0000-0000-000000000000` |
+| `databricks_client_secret` | Service principal secret | `your-secret-here` |
+| `workspace_name` | Name for your workspace | `my-databricks-workspace` |
+| `location` | Azure region | `East US` |
+| `vnet_cidr` | Virtual network CIDR | `10.0.0.0/16` |
+| `resource_group_name` | Resource group name | `my-databricks-rg` |
+
+---
+
 ## 🔒 Security Best Practices
 
 - **Never commit** `terraform.tfstate` or `terraform.tfvars` with secrets to version control
-- Use **remote state storage** (S3 with DynamoDB for locking) for team collaboration
+- Use **remote state storage** (Azure Storage) for team collaboration
 - Review all configuration before running `terraform apply`
-- Ensure you have appropriate **AWS IAM permissions** to create VPCs, IAM roles, S3 buckets, etc.
-- Consider using **AWS Secrets Manager** or **Parameter Store** for sensitive values
+- Ensure you have appropriate **Azure permissions** (Contributor or Owner role)
 
 ---
 
@@ -128,22 +142,21 @@ Install dependencies:
 pip3 install -r requirements.txt
 ```
 
-### AWS CLI not configured
-Run `aws configure` and provide your access key, secret key, and default region.
+### Azure CLI not authenticated
+Run `az login` and follow the prompts.
 
 ### Terraform errors
 - Ensure Terraform is installed: `terraform version`
 - Run `terraform init` in the template directory
-- Check AWS IAM permissions
-- Verify AWS CLI credentials: `aws sts get-caller-identity`
+- Check Azure permissions
 
 ---
 
 ## 📚 Additional Resources
 
-- [Databricks on AWS Documentation](https://docs.databricks.com/administration-guide/cloud-configurations/aws/index.html)
-- [Terraform AWS Provider Docs](https://registry.terraform.io/providers/hashicorp/aws/latest/docs)
-- [AWS CLI Reference](https://docs.aws.amazon.com/cli/)
+- [Databricks on Azure Documentation](https://docs.databricks.com/administration-guide/cloud-configurations/azure/index.html)
+- [Terraform Azure Provider Docs](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs)
+- [Azure CLI Reference](https://docs.microsoft.com/en-us/cli/azure/)
 
 ---
 
