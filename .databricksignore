@@ -5,3 +5,13 @@ dist/
 deploy.spec
 __pycache__/
 *.pyc
+.git/
+.terraform/
+terraform.tfstate*
+*.backup
+.DS_Store
+venv/
+app.py
+deploy.py
+.gitignore
+README.md
