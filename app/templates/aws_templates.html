@@ -1,11 +1,11 @@
 {% extends "base.html" %}
 
-{% block title %}Azure Templates - Databricks Workspace Creator{% endblock %}
+{% block title %}AWS Templates - Databricks Workspace Creator{% endblock %}
 
 {% block content %}
 <div class="container">
     <a href="{{ url_for('main.cloud_selection') }}" class="back-btn">← Back to Cloud Selection</a>
-    <h1>Azure Templates</h1>
+    <h1>AWS Templates</h1>
     <p class="subtitle">Choose the security and networking configuration that best fits your requirements.</p>
 
     <div style="max-width: 700px; margin: 30px auto 40px; background: rgba(255, 107, 53, 0.08); border: 1px solid #ff6b35; border-radius: 8px; padding: 20px 25px; cursor: pointer; transition: all 0.3s ease;" onmouseover="this.style.background='rgba(255, 107, 53, 0.12)'" onmouseout="this.style.background='rgba(255, 107, 53, 0.08)'">
@@ -25,17 +25,18 @@
 
     <div class="templates">
         {% for template in templates %}
-        <a href="{{ url_for('azure.os_selection', template_name=template.name) }}" class="template-card">
-            <div class="template-title">Standard VNet Injected Workspace</div>
-            <div class="template-description">Secure baseline deployment with customer-managed networking</div>
+        <a href="{{ url_for('aws.os_selection', template_name=template.name) }}" class="template-card">
+            <div class="template-title">Standard BYOVPC Workspace</div>
+            <div class="template-description">Secure baseline deployment with customer-managed VPC</div>
             <div class="template-features">
                 <ul>
-                    <li><strong>Private networking</strong> with VNet injection for network isolation</li>
-                    <li><strong>Network security groups</strong> controlling inbound/outbound traffic</li>
-                    <li><strong>NAT gateway</strong> for secure outbound internet access</li>
-                    <li><strong>Azure resource group</strong> isolation for governance</li>
-                    <li><strong>Production-ready</strong> security configuration out of the box</li>
-                    <li><strong>Upgradeable</strong> to maximum security workspace when needed</li>
+                    <li><strong>Customer-managed VPC</strong> (BYOVPC) for complete network control</li>
+                    <li><strong>Security groups</strong> controlling inbound/outbound traffic at instance level</li>
+                    <li><strong>Private and public subnets</strong> for isolated compute and NAT gateways</li>
+                    <li><strong>IAM roles and policies</strong> for fine-grained access control</li>
+                    <li><strong>S3 bucket configuration</strong> for secure root storage and logging</li>
+                    <li><strong>Unity Catalog integration</strong> ready for data governance</li>
+                    <li><strong>Upgradeable</strong> to PrivateLink workspace for enhanced security</li>
                 </ul>
             </div>
         </a>
@@ -45,16 +46,17 @@
             <div style="position: absolute; top: 20px; right: 20px; background: #ff6b35; color: white; padding: 5px 15px; border-radius: 4px; font-size: 0.85em; font-weight: 600;">
                 Coming Soon
             </div>
-            <div class="template-title">Maximum Security Workspace</div>
-            <div class="template-description">Enterprise-grade security with Private Link and enhanced compliance</div>
+            <div class="template-title">Maximum Security PrivateLink Workspace</div>
+            <div class="template-description">Enterprise-grade security with AWS PrivateLink and zero internet exposure</div>
             <div class="template-features">
                 <ul>
                     <li><strong>All Standard features</strong> included as foundation</li>
-                    <li><strong>Private Link</strong> for fully private connectivity to control plane and storage</li>
-                    <li><strong>No public endpoints</strong> eliminating internet exposure</li>
-                    <li><strong>Enhanced compliance</strong> meeting strictest regulatory requirements</li>
-                    <li><strong>Ideal for banking,</strong> healthcare, and highly regulated industries</li>
-                    <li><strong>Complete network isolation</strong> with zero trust architecture</li>
+                    <li><strong>AWS PrivateLink</strong> for private connectivity to control plane and data plane</li>
+                    <li><strong>VPC endpoints</strong> eliminating all public internet traffic</li>
+                    <li><strong>Enhanced compliance</strong> meeting PCI-DSS, HIPAA, and SOC 2 requirements</li>
+                    <li><strong>Ideal for financial services,</strong> healthcare, and regulated workloads</li>
+                    <li><strong>Complete network isolation</strong> with private subnet-only architecture</li>
+                    <li><strong>Interface VPC endpoints</strong> for AWS services (S3, Kinesis, STS)</li>
                 </ul>
             </div>
         </div>

@@ -1,7 +1,6 @@
 tenant_id = "bf465dc7-3bc8-4944-b018-092572b5c20d"
 azure_subscription_id = "edd4cc45-85c7-4aec-8bf5-648062d519bf"
 tags = {
-  "Owner": "ognjen.pantelic@databricks.com"
 }
 resource_group_name = "op-test"
 workspace_name = "op-test"

@@ -4,21 +4,69 @@ Local Terraform Deployment UI
 
 A simple web interface for configuring and deploying Terraform templates locally.
 This script is included with downloaded templates to provide an easy deployment experience.
+Supports both Azure and AWS templates.
 """
 
 import os
 import subprocess
 import json
 import threading
+import sys
 from flask import Flask, render_template_string, request, redirect, url_for, flash
 from werkzeug.utils import secure_filename
-import webview
+try:
+    import webview
+    HAS_WEBVIEW = True
+except ImportError:
+    HAS_WEBVIEW = False
 
 app = Flask(__name__)
 app.secret_key = 'local-deployment-key'
 
-# Path to the Terraform template directory
-TEMPLATE_PATH = '/Users/ognjen.pantelic/Downloads/Azure_VNet_Injection_Workspace_template (4)'
+# Auto-detect template path - look for azure-simple or aws-simple directories
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+TEMPLATE_DIRS = {
+    'azure-simple': os.path.join(SCRIPT_DIR, 'templates', 'azure-simple'),
+    'aws-simple': os.path.join(SCRIPT_DIR, 'templates', 'aws-simple')
+}
+
+# Allow template selection via command line argument
+SELECTED_TEMPLATE = None
+if len(sys.argv) > 1:
+    arg_template = sys.argv[1].lower()
+    if arg_template in TEMPLATE_DIRS:
+        SELECTED_TEMPLATE = arg_template
+
+# Detect which template is present
+DETECTED_TEMPLATE = None
+TEMPLATE_PATH = None
+
+if SELECTED_TEMPLATE:
+    # Use command-line specified template
+    DETECTED_TEMPLATE = SELECTED_TEMPLATE
+    TEMPLATE_PATH = TEMPLATE_DIRS[SELECTED_TEMPLATE]
+    if not os.path.exists(TEMPLATE_PATH):
+        print(f"ERROR: Template '{SELECTED_TEMPLATE}' not found at {TEMPLATE_PATH}")
+        sys.exit(1)
+else:
+    # Auto-detect from available templates
+    for template_name, template_path in TEMPLATE_DIRS.items():
+        if os.path.exists(template_path) and os.path.exists(os.path.join(template_path, 'terraform.tfvars')):
+            DETECTED_TEMPLATE = template_name
+            TEMPLATE_PATH = template_path
+            break
+
+# If no template found, check if we're inside a template directory
+if not TEMPLATE_PATH:
+    if os.path.exists(os.path.join(SCRIPT_DIR, 'terraform.tfvars')):
+        TEMPLATE_PATH = SCRIPT_DIR
+        # Try to detect template type from files
+        if os.path.exists(os.path.join(SCRIPT_DIR, 'azure.tf')):
+            DETECTED_TEMPLATE = 'azure-simple'
+        elif os.path.exists(os.path.join(SCRIPT_DIR, 'aws.tf')):
+            DETECTED_TEMPLATE = 'aws-simple'
+        else:
+            DETECTED_TEMPLATE = 'unknown'
 
 # Global variable to store deployment status
 deploy_status = {'running': False, 'output': '', 'success': None, 'command': None}
@@ -193,7 +241,7 @@ def index():
     <!DOCTYPE html>
     <html>
     <head>
-        <title>Local Terraform Deployment</title>
+        <title>Local Terraform Deployment - {{ template_type|upper }}</title>
         <style>
             body { font-family: Arial, sans-serif; margin: 20px; background: #121212; color: #ffffff; }
             .container { max-width: 800px; margin: 0 auto; background: #1e1e1e; padding: 20px; border-radius: 8px; box-shadow: 0 2px 10px rgba(255,255,255,0.1); }
@@ -219,6 +267,9 @@ def index():
     <body>
         <div class="container">
             <h1>Local Terraform Deployment</h1>
+            {% if template_type %}
+            <p style="text-align: center; color: #ff6b35; font-weight: bold;">Template: {{ template_type }}</p>
+            {% endif %}
             <p>Configure your Terraform variables and deploy your infrastructure.</p>
 
             {% with messages = get_flashed_messages(with_categories=true) %}
@@ -234,7 +285,16 @@ def index():
                 {% for key, value in data.items() %}
                 <div class="form-group">
                     {% if key == 'tenant_id' %}
-                    <label>{{ key }} <small style="color: #666;">(Tenant ID is same as Directory ID from Azure Portal)</small></label>
+                    <label>{{ key }} <small style="color: #888;">(Tenant ID is same as Directory ID from Azure Portal)</small></label>
+                    <input type="text" name="{{ key }}" value="{{ value }}">
+                    {% elif key == 'databricks_client_id' %}
+                    <label>{{ key }} <small style="color: #888;">(OAuth Client ID from Databricks Account Console)</small></label>
+                    <input type="text" name="{{ key }}" value="{{ value }}">
+                    {% elif key == 'databricks_client_secret' %}
+                    <label>{{ key }} <small style="color: #888;">(OAuth Client Secret - keep secure!)</small></label>
+                    <input type="password" name="{{ key }}" value="{{ value }}">
+                    {% elif key == 'databricks_account_id' %}
+                    <label>{{ key }} <small style="color: #888;">(Your Databricks Account ID)</small></label>
                     <input type="text" name="{{ key }}" value="{{ value }}">
                     {% elif key == 'tags' %}
                     <label>{{ key }}:</label>
@@ -288,7 +348,7 @@ def index():
         </script>
     </body>
     </html>
-    ''', data=data)
+    ''', data=data, template_type=DETECTED_TEMPLATE or 'Unknown')
 
 @app.route('/plan', methods=['GET', 'POST'])
 def plan():
@@ -479,9 +539,34 @@ def status():
         ''', output=deploy_status['output'], success=deploy_status['success'], command=deploy_status['command'])
 
 if __name__ == '__main__':
-    # Start Flask server in a thread
-    threading.Thread(target=lambda: app.run(debug=False, host='127.0.0.1', port=8081)).start()
+    if not TEMPLATE_PATH:
+        print("ERROR: Could not find terraform.tfvars file.")
+        print("Please ensure you're running this script from the template directory or the workspace directory.")
+        print("\nAvailable templates:")
+        for name, path in TEMPLATE_DIRS.items():
+            exists = "✓" if os.path.exists(path) else "✗"
+            print(f"  {exists} {name}: {path}")
+        print("\nUsage: python3 deploy.py [azure-simple|aws-simple]")
+        sys.exit(1)
     
-    # Open desktop window
-    webview.create_window('Local Terraform Deployment', 'http://127.0.0.1:8081')
-    webview.start()
+    print(f"Detected template: {DETECTED_TEMPLATE}")
+    print(f"Template path: {TEMPLATE_PATH}")
+    print(f"Starting deployment UI on http://127.0.0.1:8081")
+    print("\nTo switch templates, run:")
+    print("  python3 deploy.py azure-simple")
+    print("  python3 deploy.py aws-simple")
+    
+    if HAS_WEBVIEW:
+        # Start Flask server in a thread
+        threading.Thread(target=lambda: app.run(debug=False, host='127.0.0.1', port=8081)).start()
+        
+        # Open desktop window
+        webview.create_window(f'Terraform Deployment - {DETECTED_TEMPLATE}', 'http://127.0.0.1:8081')
+        webview.start()
+    else:
+        # Run Flask directly (webview not available)
+        print("Note: pywebview not installed. Opening in browser instead.")
+        print("Install with: pip install pywebview")
+        import webbrowser
+        threading.Timer(1.5, lambda: webbrowser.open('http://127.0.0.1:8081')).start()
+        app.run(debug=False, host='127.0.0.1', port=8081)

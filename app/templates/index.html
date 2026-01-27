@@ -4,20 +4,21 @@
 
 {% block content %}
 <div class="container">
+    <a href="{{ url_for('main.index') }}" class="back-btn">← Back to Welcome</a>
     <h1>Databricks Workspace Creator</h1>
     <p class="subtitle">This tool enables you to create a production-grade Databricks workspace following industry best practices in an intuitive and user-friendly way.</p>
 
     <h2>Choose your cloud:</h2>
+    <p class="subtitle" style="margin-top: -10px; margin-bottom: 30px;">Select the cloud platform on which you would like to deploy your Databricks workspace.</p>
 
     <div class="cloud-selection">
         <a href="{{ url_for('azure.azure_templates') }}" class="cloud-card azure">
             <div class="cloud-name">Azure</div>
         </a>
 
-        <div class="cloud-card aws">
+        <a href="{{ url_for('aws.aws_templates') }}" class="cloud-card aws">
             <div class="cloud-name">AWS</div>
-            <div class="coming-soon">Coming Soon</div>
-        </div>
+        </a>
 
         <div class="cloud-card gcp">
             <div class="cloud-name">GCP</div>

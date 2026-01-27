@@ -65,6 +65,9 @@ class TemplateService:
                 for k, v in value.items():
                     content.append(f'  "{k}": "{v}"')
                 content.append('}')
+            elif isinstance(value, str) and value.startswith('[') and value.endswith(']'):
+                # Handle list values - don't add extra quotes
+                content.append(f'{key} = {value}')
             else:
                 content.append(f'{key} = "{value}"')
 
