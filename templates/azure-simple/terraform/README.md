@@ -31,9 +31,9 @@ pip install -r requirements.txt
 python deploy.py
 ```
 
-The web interface will automatically open at **http://localhost:8081**
+The web interface will automatically open at **http://localhost:8080**
 
-### Step 3: Configure and Deploy
+### Step 4: Configure and Deploy
 1. Fill in your configuration values in the web UI
 2. Click "Save Configuration"
 3. Click 4Run Terraform Plan" to preview changes
