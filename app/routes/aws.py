@@ -78,10 +78,10 @@ def download_clean_template(template_name):
                 else:
                     zip_file.write(file_path, arcname)
 
-        # Include the local deployment UI script (deploy.py from workspace root)
-        deploy_script_path = os.path.join(os.path.dirname(Config.TEMPLATES_DIR), 'deploy.py')
-        if os.path.exists(deploy_script_path):
-            zip_file.write(deploy_script_path, 'deploy.py')
+        # Include the template-specific deployment UI script
+        template_deploy_path = os.path.join(template.directory, 'deploy.py')
+        if os.path.exists(template_deploy_path):
+            zip_file.write(template_deploy_path, 'deploy.py')
 
     zip_buffer.seek(0)
 
