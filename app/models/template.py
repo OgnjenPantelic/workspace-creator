@@ -18,9 +18,14 @@ class Template:
         return descriptions.get(self.name, f'Deploy {self.name} workspace')
 
     @property
+    def directory(self) -> str:
+        """Get template directory path (alias for path)"""
+        return self.path
+
+    @property
     def tfvars_path(self) -> str:
         """Get path to terraform.tfvars file"""
-        return os.path.join(self.path, 'terraform.tfvars')
+        return os.path.join(self.path, 'terraform', 'terraform.tfvars')
 
     def exists(self) -> bool:
         """Check if template exists"""
@@ -38,7 +43,9 @@ class TemplateManager:
         if os.path.exists(self.templates_dir):
             for item in os.listdir(self.templates_dir):
                 template_path = os.path.join(self.templates_dir, item)
-                if os.path.isdir(template_path) and os.path.exists(os.path.join(template_path, 'terraform.tfvars')):
+                terraform_subdir = os.path.join(template_path, 'terraform')
+                # Check if terraform subfolder exists with terraform.tfvars
+                if os.path.isdir(template_path) and os.path.exists(os.path.join(terraform_subdir, 'terraform.tfvars')):
                     template = Template(item, template_path)
                     templates.append(template)
         return templates
