@@ -323,11 +323,21 @@ pub fn run_terraform(
     // Extend PATH to include common installation locations (macOS GUI apps have minimal PATH)
     let install_dir = crate::dependencies::get_terraform_install_path();
     let current_path = std::env::var("PATH").unwrap_or_default();
+    
+    #[cfg(target_os = "windows")]
+    let extended_path = format!(
+        "{};{}",
+        install_dir.to_string_lossy(),
+        current_path
+    );
+    
+    #[cfg(not(target_os = "windows"))]
     let extended_path = format!(
         "{}:/usr/local/bin:/opt/homebrew/bin:/opt/local/bin:{}",
         install_dir.to_string_lossy(),
         current_path
     );
+    
     cmd.env("PATH", extended_path);
 
     cmd.spawn().map_err(|e| e.to_string())
