@@ -21,23 +21,21 @@ async function generateIcons() {
 
     console.log('Generating icons...\n');
 
-    // Generate main icon (512x512) - used by both platforms
-    await sharp(svgContent)
-      .resize(512, 512)
-      .png()
-      .toFile(path.join(iconsDir, 'icon.png'));
-    console.log('✓ Generated icon.png (512x512)');
+    // Generate icons at multiple sizes for best quality on all platforms
+    const sizes = [
+      { size: 32, name: '32x32.png' },
+      { size: 128, name: '128x128.png' },
+      { size: 256, name: '128x128@2x.png' },
+      { size: 512, name: 'icon.png' },
+    ];
 
-    // Generate ICO for Windows (256x256 is standard for .ico)
-    const pngBuffer = await sharp(svgContent)
-      .resize(256, 256)
-      .png()
-      .toBuffer();
-    
-    const pngToIco = require('png-to-ico');
-    const icoBuffer = await pngToIco(pngBuffer);
-    fs.writeFileSync(path.join(iconsDir, 'icon.ico'), icoBuffer);
-    console.log('✓ Generated icon.ico (256x256)');
+    for (const { size, name } of sizes) {
+      await sharp(svgContent)
+        .resize(size, size)
+        .png()
+        .toFile(path.join(iconsDir, name));
+      console.log(`✓ Generated ${name} (${size}x${size})`);
+    }
 
     // List all generated files
     console.log('\nGenerated files:');
