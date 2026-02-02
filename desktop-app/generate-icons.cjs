@@ -37,12 +37,12 @@ async function generateIcons() {
       console.log(`✓ Generated ${name} (${size}x${size})`);
     }
 
-    // Generate ICO for Windows - png-to-ico takes a file path
-    const icoSourcePath = path.join(iconsDir, '128x128@2x.png'); // Use 256x256 for ICO
-    const pngToIco = require('png-to-ico');
-    const icoBuffer = await pngToIco(icoSourcePath);
+    // Generate ICO for Windows using to-ico package
+    const toIco = require('to-ico');
+    const pngBuffer = fs.readFileSync(path.join(iconsDir, '128x128@2x.png'));
+    const icoBuffer = await toIco([pngBuffer]);
     fs.writeFileSync(path.join(iconsDir, 'icon.ico'), icoBuffer);
-    console.log('✓ Generated icon.ico (from 256x256 PNG)');
+    console.log('✓ Generated icon.ico');
 
     // List all generated files
     console.log('\nGenerated files:');
