@@ -62,7 +62,7 @@ jobs:
       - name: Generate app icons
         shell: bash
         run: |
-          npm install sharp
+          npm install sharp png-to-ico
           node generate-icons.cjs
           echo "Generated icons:"
           ls -la src-tauri/icons/
