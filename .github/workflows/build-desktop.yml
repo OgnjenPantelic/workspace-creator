@@ -60,7 +60,11 @@ jobs:
         run: npm ci
 
       - name: Generate app icons
-        run: npx tauri icon public/favicon.svg --output src-tauri/icons
+        shell: bash
+        run: |
+          npm install sharp png-to-ico
+          node generate-icons.js
+          ls -la src-tauri/icons/
 
       - name: Build Tauri app
         uses: tauri-apps/tauri-action@v0
