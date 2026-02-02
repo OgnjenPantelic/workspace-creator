@@ -1,0 +1,44 @@
+[package]
+name = "databricks-deployer"
+version = "1.0.0"
+description = "Deploy Databricks workspaces with ease"
+authors = ["Databricks"]
+edition = "2021"
+
+[lib]
+name = "databricks_deployer_lib"
+crate-type = ["lib", "cdylib", "staticlib"]
+
+[[bin]]
+name = "databricks-deployer"
+path = "src/main.rs"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-shell = "2"
+tauri-plugin-dialog = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["full"] }
+reqwest = { version = "0.12", features = ["json", "blocking"] }
+dirs = "5"
+zip = "2"
+tempfile = "3"
+which = "6"
+lazy_static = "1.5"
+
+[target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
+tauri-plugin-single-instance = "2"
+
+[features]
+default = ["custom-protocol"]
+custom-protocol = ["tauri/custom-protocol"]
+
+[profile.release]
+strip = true
+lto = true
+codegen-units = 1
+panic = "abort"
