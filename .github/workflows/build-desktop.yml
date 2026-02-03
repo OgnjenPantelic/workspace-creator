@@ -59,14 +59,6 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
 
-      - name: Generate app icons
-        shell: bash
-        run: |
-          npm install sharp to-ico
-          node generate-icons.cjs
-          echo "Generated icons:"
-          ls -la src-tauri/icons/
-
       - name: Build frontend
         run: npm run build
 
