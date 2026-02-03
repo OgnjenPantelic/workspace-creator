@@ -45,117 +45,128 @@ const DependenciesScreen: React.FC<DependenciesScreenProps> = ({
 
       {error && <div className="alert alert-error">{error}</div>}
 
-      <div className="dependencies-list">
-        {/* Required Dependencies */}
-        <div className={`dependency ${terraformDep?.installed ? "installed" : "missing"}`}>
-          <div className="dep-info">
-            <span className="dep-name">Terraform</span>
-            <span className="dep-version">
-              {terraformDep?.version || "Not installed"}
-            </span>
-            <span className="dep-badge required">Required</span>
-          </div>
-          {!terraformDep?.installed && (
-            <button
-              className="btn btn-small"
-              onClick={onInstallTerraform}
-              disabled={installingTerraform}
-            >
-              {installingTerraform ? (
-                <>
-                  <span className="spinner" />
-                  Installing...
-                </>
-              ) : (
-                "Install"
+      <div className="dependency-list">
+        {/* Terraform - Required */}
+        <div className="dependency-item">
+          <div className="dependency-info">
+            <div className={`dependency-status ${terraformDep?.installed ? "installed" : "missing"}`} />
+            <div>
+              <div className="dependency-name">Terraform</div>
+              {terraformDep?.version && (
+                <div className="dependency-version">v{terraformDep.version}</div>
               )}
-            </button>
-          )}
+            </div>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+            <span className="dependency-badge required">Required</span>
+            {!terraformDep?.installed && (
+              <button
+                className="btn"
+                onClick={onInstallTerraform}
+                disabled={installingTerraform}
+              >
+                {installingTerraform ? (
+                  <>
+                    <span className="spinner" />
+                    Installing...
+                  </>
+                ) : (
+                  "Install"
+                )}
+              </button>
+            )}
+          </div>
         </div>
 
-        <div className={`dependency ${gitDep?.installed ? "installed" : "missing"}`}>
-          <div className="dep-info">
-            <span className="dep-name">Git</span>
-            <span className="dep-version">
-              {gitDep?.version || "Not installed"}
-            </span>
-            <span className="dep-badge required">Required</span>
+        {/* Git - Required */}
+        <div className="dependency-item">
+          <div className="dependency-info">
+            <div className={`dependency-status ${gitDep?.installed ? "installed" : "missing"}`} />
+            <div>
+              <div className="dependency-name">Git</div>
+              {gitDep?.version && (
+                <div className="dependency-version">{gitDep.version}</div>
+              )}
+            </div>
           </div>
-          {!gitDep?.installed && (
-            <a
-              href={gitDep?.install_url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="btn btn-small"
-            >
-              Install Guide
-            </a>
-          )}
+          <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+            <span className="dependency-badge required">Required</span>
+            {!gitDep?.installed && (
+              <a href={gitDep?.install_url} target="_blank" className="btn btn-secondary btn-small">
+                Install Guide
+              </a>
+            )}
+          </div>
         </div>
 
-        {/* Optional Cloud CLI */}
-        <div className={`dependency ${cloudCliDep?.installed ? "installed" : "optional"}`}>
-          <div className="dep-info">
-            <span className="dep-name">{cloudCliName}</span>
-            <span className="dep-version">
-              {cloudCliDep?.version || "Not installed"}
-            </span>
-            <span className="dep-badge optional">Optional</span>
+        {/* Cloud-specific CLI - Optional */}
+        <div className="dependency-item">
+          <div className="dependency-info">
+            <div className={`dependency-status ${cloudCliDep?.installed ? "installed" : "optional"}`} />
+            <div>
+              <div className="dependency-name">{cloudCliName}</div>
+              {cloudCliDep?.version && (
+                <div className="dependency-version">{cloudCliDep.version}</div>
+              )}
+              {!cloudCliDep?.installed && (
+                <div className="dependency-note">
+                  {selectedCloud === CLOUDS.AWS 
+                    ? "Enables profile-based auth and SSO"
+                    : selectedCloud === CLOUDS.AZURE 
+                      ? "Enables interactive login"
+                      : "Enables interactive login"}
+                </div>
+              )}
+            </div>
           </div>
-          {!cloudCliDep?.installed && (
-            <a
-              href={cloudCliDep?.install_url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="btn btn-small btn-secondary"
-            >
-              Install Guide
-            </a>
-          )}
+          <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+            <span className="dependency-badge">Optional</span>
+            {!cloudCliDep?.installed && (
+              <a href={cloudCliDep?.install_url} target="_blank" className="btn btn-secondary btn-small">
+                Install Guide
+              </a>
+            )}
+          </div>
         </div>
-        {!cloudCliDep?.installed && (
-          <p className="help-text" style={{ marginTop: "-8px", marginBottom: "12px" }}>
-            {selectedCloud === CLOUDS.AWS 
-              ? "AWS CLI enables profile-based authentication and SSO. Without it, you'll need to provide access keys manually."
-              : selectedCloud === CLOUDS.AZURE 
-                ? "Azure CLI enables interactive login and subscription management. Without it, you'll need to provide service principal credentials."
-                : "GCloud CLI enables interactive login. Without it, you'll need to provide service account credentials."}
-          </p>
-        )}
 
-        {/* Optional Databricks CLI */}
-        <div className={`dependency ${databricksCli?.installed ? "installed" : "optional"}`}>
-          <div className="dep-info">
-            <span className="dep-name">Databricks CLI</span>
-            <span className="dep-version">
-              {databricksCli?.version || "Not installed"}
-            </span>
-            <span className="dep-badge optional">Optional</span>
+        {/* Databricks CLI - Optional */}
+        <div className="dependency-item">
+          <div className="dependency-info">
+            <div className={`dependency-status ${databricksCli?.installed ? "installed" : "optional"}`} />
+            <div>
+              <div className="dependency-name">Databricks CLI</div>
+              {databricksCli?.version && (
+                <div className="dependency-version">{databricksCli.version}</div>
+              )}
+              {!databricksCli?.installed && (
+                <div className="dependency-note">Enables profile-based OAuth authentication</div>
+              )}
+            </div>
           </div>
-          {!databricksCli?.installed && (
-            <a
-              href={databricksCli?.install_url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="btn btn-small btn-secondary"
-            >
-              Install Guide
-            </a>
-          )}
+          <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+            <span className="dependency-badge">Optional</span>
+            {!databricksCli?.installed && (
+              <a href={databricksCli?.install_url} target="_blank" className="btn btn-secondary btn-small">
+                Install Guide
+              </a>
+            )}
+          </div>
         </div>
-        {!databricksCli?.installed && (
-          <p className="help-text" style={{ marginTop: "-8px", marginBottom: "12px" }}>
-            Databricks CLI enables profile-based authentication with OAuth. Without it, you'll need to provide service principal credentials.
-          </p>
-        )}
       </div>
 
+      {!terraformDep?.installed && (
+        <div className="alert alert-warning">
+          Terraform is required to deploy workspaces. Click "Install" above to automatically
+          download and install it, or install it manually from{" "}
+          <a href={terraformDep?.install_url} target="_blank" style={{ color: "#ffb347" }}>
+            terraform.io
+          </a>
+        </div>
+      )}
+
       <div className="alert alert-info">
-        <strong>{cloudCliName}</strong> is optional. If installed, credentials will be auto-detected.
-        Otherwise, you can enter them manually.
-        <br /><br />
-        <strong>Databricks CLI</strong> is optional. If installed, you can authenticate using saved profiles
-        or OAuth login. Otherwise, you can enter service principal credentials manually.
+        {cloudCliName} is optional. If installed, credentials will be auto-detected.
+        Otherwise, you can enter them manually in the next steps.
       </div>
 
       <div style={{ marginTop: "32px" }}>
