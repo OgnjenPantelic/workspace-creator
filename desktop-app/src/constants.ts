@@ -147,7 +147,7 @@ export const AZURE_REGIONS: { value: string; label: string }[] = [
   { value: "uaenorth", label: "UAE North" },
 ];
 
-// Variables to exclude from the configuration form (collected in credentials screens)
+// Variables to exclude from the configuration form (collected in credentials screens or auto-detected)
 export const EXCLUDE_VARIABLES = [
   "databricks_account_id",
   "databricks_client_id",
@@ -161,4 +161,11 @@ export const EXCLUDE_VARIABLES = [
   "azure_client_id",
   "azure_client_secret",
   "create_new_resource_group",
+  // Unity Catalog variables - configured in dedicated UC setup screen
+  "existing_metastore_id",
+  "create_unity_catalog",
+  "uc_catalog_name",
+  "uc_storage_name",
+  "uc_force_destroy",
+  "databricks_auth_type",
 ] as const;

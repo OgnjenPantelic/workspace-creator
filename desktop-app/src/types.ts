@@ -48,6 +48,8 @@ export interface CloudCredentials {
   databricks_account_id?: string;
   databricks_client_id?: string;
   databricks_client_secret?: string;
+  databricks_profile?: string;      // Profile name from ~/.databrickscfg
+  databricks_auth_type?: string;    // "profile" or "credentials"
 }
 
 export interface AwsProfile {
@@ -75,6 +77,37 @@ export interface AzureAccount {
   subscription_name: string;
 }
 
+export interface DatabricksProfile {
+  name: string;
+  host: string;
+  account_id: string | null;
+  has_client_credentials: boolean;
+  has_token: boolean;
+  cloud: string;
+}
+
+export interface UnityCatalogConfig {
+  enabled: boolean;
+  catalog_name: string;
+  storage_name: string;  // S3 bucket name or Azure storage account name
+}
+
+export interface MetastoreInfo {
+  exists: boolean;
+  metastore_id: string | null;
+  metastore_name: string | null;
+  region: string | null;
+}
+
+export interface UCPermissionCheck {
+  metastore: MetastoreInfo;
+  has_create_catalog: boolean;
+  has_create_external_location: boolean;
+  has_create_storage_credential: boolean;
+  can_create_catalog: boolean;  // true if all permissions present OR no metastore (will be created)
+  message: string;
+}
+
 export type AppScreen = 
   | 'welcome'
   | 'dependencies'
@@ -84,4 +117,5 @@ export type AppScreen =
   | 'azure-credentials'
   | 'template-selection'
   | 'configuration'
+  | 'unity-catalog-config'
   | 'deployment';
