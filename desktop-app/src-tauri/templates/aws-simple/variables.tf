@@ -56,9 +56,49 @@ variable "existing_security_group_id" {
   default     = ""
 }
 
-# Unity Catalog (leave empty to create new metastore)
-variable "metastore_id" {
-  description = "Existing Unity Catalog metastore ID (leave empty to create new)"
+# Unity Catalog (leave empty to auto-detect or create new metastore)
+variable "existing_metastore_id" {
+  description = "The ID of an existing metastore to use. Leave empty to auto-detect or create a new one."
   type        = string
   default     = ""
+}
+
+# Unity Catalog configuration
+variable "create_unity_catalog" {
+  description = "Whether to create a Unity Catalog with isolated storage"
+  type        = bool
+  default     = false
+}
+
+variable "uc_catalog_name" {
+  description = "Name for the Unity Catalog (lowercase, underscores allowed)"
+  type        = string
+  default     = ""
+}
+
+variable "uc_storage_name" {
+  description = "S3 bucket name for catalog storage (must be globally unique)"
+  type        = string
+  default     = ""
+  validation {
+    condition     = var.uc_storage_name == "" || (length(var.uc_storage_name) >= 3 && length(var.uc_storage_name) <= 63)
+    error_message = "uc_storage_name must be between 3 and 63 characters when provided."
+  }
+  validation {
+    condition     = var.uc_storage_name == "" || can(regex("^[a-z0-9][a-z0-9.-]*[a-z0-9]$", var.uc_storage_name))
+    error_message = "uc_storage_name must start and end with lowercase letter or number, and contain only lowercase letters, numbers, hyphens, and periods."
+  }
+}
+
+variable "uc_force_destroy" {
+  description = "Whether to force destroy the catalog storage bucket on terraform destroy"
+  type        = bool
+  default     = false
+}
+
+# Databricks authentication type
+variable "databricks_auth_type" {
+  description = "Databricks authentication type: 'oauth-m2m' for service principal, 'databricks-cli' for CLI profile"
+  type        = string
+  default     = "oauth-m2m"
 }

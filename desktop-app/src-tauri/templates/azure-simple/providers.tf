@@ -7,15 +7,20 @@ provider "azurerm" {
 }
 
 # Databricks workspace provider - uses Azure CLI authentication
+# This authenticates to the workspace using the same Azure credentials
 provider "databricks" {
-  host = azurerm_databricks_workspace.this.workspace_url
+  host                        = azurerm_databricks_workspace.this.workspace_url
+  azure_workspace_resource_id = azurerm_databricks_workspace.this.id
+  auth_type                   = "azure-cli"
 }
 
-# Databricks account provider - uses Databricks OAuth credentials (service principal)
-# Explicitly use OAuth M2M to avoid conflict with Azure ARM_TENANT_ID env var
+# Databricks account provider
+# auth_type is set dynamically:
+# - "oauth-m2m" for service principal credentials
+# - "databricks-cli" for CLI profile authentication
 provider "databricks" {
   alias      = "accounts"
   host       = "https://accounts.azuredatabricks.net"
   account_id = var.databricks_account_id
-  auth_type  = "oauth-m2m"
+  auth_type  = var.databricks_auth_type
 }
