@@ -1,5 +1,5 @@
 import React from 'react';
-import { CLOUDS } from '../../constants';
+import { CLOUDS, CLOUD_DISPLAY_NAMES } from '../../constants';
 
 interface CloudSelectionScreenProps {
   loadingCloud: string | null;
@@ -14,54 +14,51 @@ const CloudSelectionScreen: React.FC<CloudSelectionScreenProps> = ({
 }) => {
   return (
     <div className="container">
-      <button className="back-btn" onClick={onBack}>
+      <button className="back-btn" onClick={onBack} disabled={!!loadingCloud}>
         ← Back
       </button>
       <h1>Select Cloud Provider</h1>
-      <p className="subtitle">Choose where you want to deploy your Databricks workspace.</p>
-      <div className="cloud-options">
-        <button
-          className={`cloud-option aws ${loadingCloud === CLOUDS.AWS ? "loading" : ""}`}
-          onClick={() => onSelectCloud(CLOUDS.AWS)}
-          disabled={loadingCloud !== null}
+      <p className="subtitle">
+        Select the cloud platform on which you would like to deploy your Databricks workspace.
+      </p>
+
+      {loadingCloud && (
+        <div className="loading-overlay">
+          <div className="loading-content">
+            <span className="spinner large" />
+            <div>Checking {CLOUD_DISPLAY_NAMES[loadingCloud] || loadingCloud} dependencies...</div>
+          </div>
+        </div>
+      )}
+
+      <div className="cloud-selection">
+        <div 
+          className={`cloud-card azure ${loadingCloud ? "disabled" : ""}`}
+          onClick={() => !loadingCloud && onSelectCloud(CLOUDS.AZURE)}
         >
-          {loadingCloud === CLOUDS.AWS ? (
-            <>
-              <span className="spinner" />
-              Loading...
-            </>
-          ) : (
-            <>
-              <span className="cloud-logo aws-logo">AWS</span>
-              <span className="cloud-name">Amazon Web Services</span>
-            </>
-          )}
-        </button>
-        <button
-          className={`cloud-option azure ${loadingCloud === CLOUDS.AZURE ? "loading" : ""}`}
-          onClick={() => onSelectCloud(CLOUDS.AZURE)}
-          disabled={loadingCloud !== null}
+          <div className="cloud-name">Azure</div>
+          <div className="cloud-description">
+            Deploy on Microsoft Azure with VNet injection and Unity Catalog
+          </div>
+        </div>
+
+        <div 
+          className={`cloud-card aws ${loadingCloud ? "disabled" : ""}`}
+          onClick={() => !loadingCloud && onSelectCloud(CLOUDS.AWS)}
         >
-          {loadingCloud === CLOUDS.AZURE ? (
-            <>
-              <span className="spinner" />
-              Loading...
-            </>
-          ) : (
-            <>
-              <span className="cloud-logo azure-logo">Azure</span>
-              <span className="cloud-name">Microsoft Azure</span>
-            </>
-          )}
-        </button>
-        <button
-          className="cloud-option gcp disabled"
-          disabled={true}
-          title="GCP support coming soon"
-        >
-          <span className="cloud-logo gcp-logo">GCP</span>
-          <span className="cloud-name">Google Cloud (Coming Soon)</span>
-        </button>
+          <div className="cloud-name">AWS</div>
+          <div className="cloud-description">
+            Deploy on Amazon Web Services with customer-managed VPC and Unity Catalog
+          </div>
+        </div>
+
+        <div className="cloud-card gcp disabled">
+          <div className="cloud-name">GCP</div>
+          <div className="cloud-description">
+            Deploy on Google Cloud Platform with Unity Catalog
+          </div>
+          <div className="coming-soon">Coming Soon</div>
+        </div>
       </div>
     </div>
   );
