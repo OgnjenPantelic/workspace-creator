@@ -128,3 +128,43 @@ variable "workspace_sku" {
     error_message = "Workspace SKU must be either standard, premium, or trial."
   }
 }
+
+# Unity Catalog configuration
+variable "create_unity_catalog" {
+  description = "Whether to create a Unity Catalog with isolated storage"
+  type        = bool
+  default     = false
+}
+
+variable "uc_catalog_name" {
+  description = "Name for the Unity Catalog (lowercase, underscores allowed)"
+  type        = string
+  default     = ""
+}
+
+variable "uc_storage_name" {
+  description = "Azure storage account name for catalog storage (must be globally unique, 3-24 chars, lowercase alphanumeric)"
+  type        = string
+  default     = ""
+  validation {
+    condition     = var.uc_storage_name == "" || (length(var.uc_storage_name) >= 3 && length(var.uc_storage_name) <= 24)
+    error_message = "uc_storage_name must be between 3 and 24 characters when provided."
+  }
+  validation {
+    condition     = var.uc_storage_name == "" || can(regex("^[a-z0-9]+$", var.uc_storage_name))
+    error_message = "uc_storage_name can only contain lowercase letters and numbers."
+  }
+}
+
+variable "uc_force_destroy" {
+  description = "Whether to force destroy the catalog storage on terraform destroy"
+  type        = bool
+  default     = false
+}
+
+# Databricks authentication type
+variable "databricks_auth_type" {
+  description = "Databricks authentication type: 'oauth-m2m' for service principal, 'databricks-cli' for CLI profile"
+  type        = string
+  default     = "oauth-m2m"
+}

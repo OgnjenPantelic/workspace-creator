@@ -5,6 +5,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::io::{BufRead, BufReader};
 use std::path::PathBuf;
+use std::process::Stdio;
 use tauri::{AppHandle, Manager};
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -33,6 +34,8 @@ pub struct CloudCredentials {
     pub databricks_account_id: Option<String>,
     pub databricks_client_id: Option<String>,
     pub databricks_client_secret: Option<String>,
+    pub databricks_profile: Option<String>,        // Profile name from ~/.databrickscfg
+    pub databricks_auth_type: Option<String>,      // "profile" or "credentials"
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -49,7 +52,7 @@ pub struct AwsIdentity {
 }
 
 // Version marker to track template updates - increment when templates change
-const TEMPLATES_VERSION: &str = "2.2.0";
+const TEMPLATES_VERSION: &str = "2.9.0";
 
 pub fn setup_templates(app: &AppHandle) -> Result<(), String> {
     let app_data_dir = app
@@ -265,11 +268,130 @@ pub fn check_dependencies() -> HashMap<String, DependencyStatus> {
     let mut deps = HashMap::new();
     
     deps.insert("terraform".to_string(), dependencies::check_terraform());
+    deps.insert("git".to_string(), dependencies::check_git());
     deps.insert("aws".to_string(), dependencies::check_aws_cli());
     deps.insert("azure".to_string(), dependencies::check_azure_cli());
     deps.insert("gcloud".to_string(), dependencies::check_gcloud_cli());
+    deps.insert("databricks".to_string(), dependencies::check_databricks_cli());
     
     deps
+}
+
+#[tauri::command]
+pub fn get_databricks_profiles(cloud: String) -> Vec<dependencies::DatabricksProfile> {
+    dependencies::get_databricks_profiles_for_cloud(&cloud)
+}
+
+#[tauri::command]
+pub async fn databricks_cli_login(cloud: String, account_id: String) -> Result<String, String> {
+    let cli_path = dependencies::find_databricks_cli_path()
+        .ok_or_else(|| crate::errors::cli_not_found("Databricks CLI"))?;
+    
+    // Determine the account host based on cloud
+    let host = if cloud == "azure" {
+        "https://accounts.azuredatabricks.net"
+    } else {
+        "https://accounts.cloud.databricks.com"
+    };
+    
+    // Create a profile name based on the account ID (first 8 chars)
+    let profile_name = format!("deployer-{}", &account_id[..8.min(account_id.len())]);
+    
+    // Clear the token cache to force re-authentication
+    // The token cache is at ~/.databricks/token-cache.json
+    if let Some(home) = dirs::home_dir() {
+        let token_cache_path = home.join(".databricks").join("token-cache.json");
+        if token_cache_path.exists() {
+            // Read and parse the token cache
+            if let Ok(content) = std::fs::read_to_string(&token_cache_path) {
+                if let Ok(mut cache) = serde_json::from_str::<serde_json::Value>(&content) {
+                    if let Some(obj) = cache.as_object_mut() {
+                        // Remove entries that match this host/account
+                        let keys_to_remove: Vec<String> = obj.keys()
+                            .filter(|k| k.contains(&account_id) || k.contains(host))
+                            .cloned()
+                            .collect();
+                        
+                        for key in keys_to_remove {
+                            obj.remove(&key);
+                        }
+                        
+                        // Write back the modified cache
+                        if let Ok(new_content) = serde_json::to_string_pretty(&cache) {
+                            let _ = std::fs::write(&token_cache_path, new_content);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    // Run databricks auth login command with explicit profile name
+    // Using spawn() with inherited stdio to allow interactive OAuth flow with browser
+    let mut child = std::process::Command::new(&cli_path)
+        .args([
+            "auth", "login",
+            "--host", host,
+            "--account-id", &account_id,
+            "--profile", &profile_name,
+        ])
+        .stdin(Stdio::inherit())
+        .stdout(Stdio::inherit())
+        .stderr(Stdio::inherit())
+        .spawn()
+        .map_err(|e| format!("Failed to run Databricks CLI: {}", e))?;
+    
+    // Wait for the command to complete
+    let status = child.wait()
+        .map_err(|e| format!("Failed to wait for Databricks CLI: {}", e))?;
+    
+    if status.success() {
+        Ok(format!("Login successful! Profile '{}' created/updated.", profile_name))
+    } else {
+        // Check if profile was created anyway (user might have completed OAuth)
+        let profiles = dependencies::get_databricks_profiles_for_cloud(&cloud);
+        if profiles.iter().any(|p| p.name == profile_name) {
+            Ok(format!("Profile '{}' is ready.", profile_name))
+        } else {
+            Err("Login failed or was cancelled. Please try again.".to_string())
+        }
+    }
+}
+
+#[tauri::command]
+pub fn get_databricks_profile_credentials(profile_name: String) -> Result<HashMap<String, String>, String> {
+    let config_path = dependencies::get_databricks_config_path()
+        .ok_or_else(|| "Databricks config file not found".to_string())?;
+    
+    let content = std::fs::read_to_string(&config_path)
+        .map_err(|e| format!("Failed to read config file: {}", e))?;
+    
+    let mut in_target_profile = false;
+    let mut credentials: HashMap<String, String> = HashMap::new();
+    
+    for line in content.lines() {
+        let line = line.trim();
+        
+        if line.starts_with('[') && line.ends_with(']') {
+            let section_name = &line[1..line.len()-1];
+            in_target_profile = section_name == profile_name;
+            continue;
+        }
+        
+        if in_target_profile {
+            if let Some(eq_pos) = line.find('=') {
+                let key = line[..eq_pos].trim().to_string();
+                let value = line[eq_pos + 1..].trim().to_string();
+                credentials.insert(key, value);
+            }
+        }
+    }
+    
+    if credentials.is_empty() {
+        Err(format!("Profile '{}' not found or has no credentials", profile_name))
+    } else {
+        Ok(credentials)
+    }
 }
 
 #[tauri::command]
@@ -530,6 +652,17 @@ pub fn save_configuration(
                 );
             }
         }
+        // Databricks auth type for Terraform provider
+        // "profile" -> "databricks-cli", "credentials" -> "oauth-m2m"
+        let auth_type = match creds.databricks_auth_type.as_deref() {
+            Some("profile") => "databricks-cli",
+            _ => "oauth-m2m",
+        };
+        merged_values.insert(
+            "databricks_auth_type".to_string(),
+            serde_json::Value::String(auth_type.to_string()),
+        );
+        
         // Azure tenant ID is needed as a terraform variable for Azure templates
         if let Some(tenant_id) = &creds.azure_tenant_id {
             if !tenant_id.is_empty() {
@@ -597,8 +730,18 @@ fn build_env_vars(credentials: &CloudCredentials) -> HashMap<String, String> {
     
     // Databricks credentials
     set_env_if_present(&mut env_vars, "DATABRICKS_ACCOUNT_ID", &credentials.databricks_account_id);
-    set_env_if_present(&mut env_vars, "DATABRICKS_CLIENT_ID", &credentials.databricks_client_id);
-    set_env_if_present(&mut env_vars, "DATABRICKS_CLIENT_SECRET", &credentials.databricks_client_secret);
+    
+    // Handle Databricks auth based on auth_type
+    let databricks_auth_type = credentials.databricks_auth_type.as_deref().unwrap_or("credentials");
+    
+    if databricks_auth_type == "profile" {
+        // Use profile-based authentication
+        set_env_if_present(&mut env_vars, "DATABRICKS_CONFIG_PROFILE", &credentials.databricks_profile);
+    } else {
+        // Use client credentials (service principal)
+        set_env_if_present(&mut env_vars, "DATABRICKS_CLIENT_ID", &credentials.databricks_client_id);
+        set_env_if_present(&mut env_vars, "DATABRICKS_CLIENT_SECRET", &credentials.databricks_client_secret);
+    }
     
     env_vars
 }
@@ -801,6 +944,8 @@ pub fn get_cloud_credentials(cloud: String) -> Result<CloudCredentials, String> 
         databricks_account_id: None,
         databricks_client_id: None,
         databricks_client_secret: None,
+        databricks_profile: None,
+        databricks_auth_type: None,
     };
     
     match cloud.as_str() {
@@ -967,7 +1112,7 @@ pub fn get_aws_identity(profile: String) -> Result<AwsIdentity, String> {
     }
     
     let aws_path = dependencies::find_aws_cli_path()
-        .ok_or_else(|| "AWS CLI not found".to_string())?;
+        .ok_or_else(|| crate::errors::cli_not_found("AWS CLI"))?;
     
     let mut cmd = Command::new(&aws_path);
     cmd.args(["sts", "get-caller-identity", "--output", "json"]);
@@ -981,7 +1126,7 @@ pub fn get_aws_identity(profile: String) -> Result<AwsIdentity, String> {
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         if stderr.contains("expired") || stderr.contains("Token") {
-            return Err("Session expired. Please login again.".to_string());
+            return Err(crate::errors::auth_expired("AWS"));
         }
         return Err(format!("Not authenticated: {}", stderr.trim()));
     }
@@ -1008,7 +1153,7 @@ pub async fn aws_sso_login(profile: String) -> Result<String, String> {
     }
     
     let aws_path = dependencies::find_aws_cli_path()
-        .ok_or_else(|| "AWS CLI not found".to_string())?;
+        .ok_or_else(|| crate::errors::cli_not_found("AWS CLI"))?;
     
     let mut cmd = Command::new(&aws_path);
     cmd.args(["sso", "login"]);
@@ -1051,7 +1196,7 @@ pub fn get_azure_account() -> Result<AzureAccount, String> {
     use std::process::Command;
     
     let az_path = dependencies::find_azure_cli_path()
-        .ok_or_else(|| "Azure CLI not found".to_string())?;
+        .ok_or_else(|| crate::errors::cli_not_found("Azure CLI"))?;
     
     let output = Command::new(&az_path)
         .args(["account", "show", "--output", "json"])
@@ -1061,7 +1206,7 @@ pub fn get_azure_account() -> Result<AzureAccount, String> {
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         if stderr.contains("az login") || stderr.contains("not logged in") {
-            return Err("Not logged in. Please run 'az login' first.".to_string());
+            return Err(crate::errors::not_logged_in("Azure"));
         }
         return Err(format!("Azure CLI error: {}", stderr.trim()));
     }
@@ -1086,7 +1231,7 @@ pub fn get_azure_subscriptions() -> Result<Vec<AzureSubscription>, String> {
     use std::process::Command;
     
     let az_path = dependencies::find_azure_cli_path()
-        .ok_or_else(|| "Azure CLI not found".to_string())?;
+        .ok_or_else(|| crate::errors::cli_not_found("Azure CLI"))?;
     
     let output = Command::new(&az_path)
         .args(["account", "list", "--output", "json"])
@@ -1120,7 +1265,7 @@ pub async fn azure_login() -> Result<String, String> {
     use std::process::Command;
     
     let az_path = dependencies::find_azure_cli_path()
-        .ok_or_else(|| "Azure CLI not found".to_string())?;
+        .ok_or_else(|| crate::errors::cli_not_found("Azure CLI"))?;
     
     let output = Command::new(&az_path)
         .args(["login"])
@@ -1146,7 +1291,7 @@ pub fn set_azure_subscription(subscription_id: String) -> Result<(), String> {
     }
     
     let az_path = dependencies::find_azure_cli_path()
-        .ok_or_else(|| "Azure CLI not found".to_string())?;
+        .ok_or_else(|| crate::errors::cli_not_found("Azure CLI"))?;
     
     let output = Command::new(&az_path)
         .args(["account", "set", "--subscription", &subscription_id])
@@ -1174,7 +1319,7 @@ pub fn get_azure_resource_groups() -> Result<Vec<AzureResourceGroup>, String> {
     use std::process::Command;
     
     let az_path = dependencies::find_azure_cli_path()
-        .ok_or_else(|| "Azure CLI not found".to_string())?;
+        .ok_or_else(|| crate::errors::cli_not_found("Azure CLI"))?;
     
     let output = Command::new(&az_path)
         .args(["group", "list", "--output", "json"])
@@ -1239,5 +1384,329 @@ pub fn open_folder(path: String) -> Result<(), String> {
     }
     
     Ok(())
+}
+
+// Unity Catalog permission check types
+#[derive(Debug, Serialize, Deserialize)]
+pub struct MetastoreInfo {
+    pub exists: bool,
+    pub metastore_id: Option<String>,
+    pub metastore_name: Option<String>,
+    pub region: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct UCPermissionCheck {
+    pub metastore: MetastoreInfo,
+    pub has_create_catalog: bool,
+    pub has_create_external_location: bool,
+    pub has_create_storage_credential: bool,
+    pub can_create_catalog: bool,
+    pub message: String,
+}
+
+/// Generate a message about metastore ownership for permission guidance
+fn get_metastore_owner_info(metastore_owner: &str) -> String {
+    let owner_is_group = !metastore_owner.contains('@');
+    
+    if owner_is_group {
+        format!(
+            "Metastore owned by group '{}'. You need the required permissions granted on this metastore.",
+            metastore_owner
+        )
+    } else {
+        format!(
+            "Metastore owned by '{}'. You need the required permissions granted on this metastore.",
+            metastore_owner
+        )
+    }
+}
+
+/// Check Unity Catalog permissions
+#[tauri::command]
+pub async fn check_uc_permissions(
+    credentials: CloudCredentials,
+    region: String,
+) -> Result<UCPermissionCheck, String> {
+    // Determine if we're using Azure or AWS
+    let is_azure = credentials.azure_tenant_id.is_some();
+    
+    // Get account ID
+    let account_id = credentials.databricks_account_id
+        .as_ref()
+        .filter(|s| !s.is_empty())
+        .ok_or("Databricks account ID is required")?;
+    
+    // Check if using service principal or profile
+    let auth_type = credentials.databricks_auth_type.as_deref().unwrap_or("credentials");
+    
+    if auth_type == "profile" {
+        // For profile auth, use Databricks CLI to list metastores
+        let profile_name = credentials.databricks_profile.as_deref().unwrap_or("DEFAULT");
+        
+        // Try to list metastores using Databricks CLI
+        let cli_path = dependencies::find_databricks_cli_path();
+        
+        if let Some(cli) = cli_path {
+            let output = std::process::Command::new(&cli)
+                .args(["account", "metastores", "list", "--output", "json", "-p", profile_name])
+                .output();
+            
+            if let Ok(out) = output {
+                if out.status.success() {
+                    let stdout = String::from_utf8_lossy(&out.stdout);
+                    
+                    if let Ok(metastores_json) = serde_json::from_str::<serde_json::Value>(&stdout) {
+                        let region_normalized = region.to_lowercase().replace(" ", "").replace("-", "");
+                        
+                        if let Some(arr) = metastores_json.as_array() {
+                            // Find matching metastore by region
+                            let matching_metastore = arr.iter().find(|m| {
+                                let metastore_region = m["region"].as_str().unwrap_or("");
+                                let metastore_region_normalized = metastore_region.to_lowercase().replace(" ", "").replace("-", "");
+                                metastore_region_normalized == region_normalized
+                            });
+                            
+                            if let Some(metastore) = matching_metastore {
+                                let metastore_id = metastore["metastore_id"].as_str().unwrap_or("");
+                                let metastore_name = metastore["name"].as_str().unwrap_or("");
+                                let metastore_owner = metastore["owner"].as_str().unwrap_or("");
+                                
+                                let message = get_metastore_owner_info(metastore_owner);
+                                
+                                return Ok(UCPermissionCheck {
+                                    metastore: MetastoreInfo {
+                                        exists: true,
+                                        metastore_id: Some(metastore_id.to_string()),
+                                        metastore_name: Some(metastore_name.to_string()),
+                                        region: Some(region),
+                                    },
+                                    has_create_catalog: false,
+                                    has_create_external_location: false,
+                                    has_create_storage_credential: false,
+                                    can_create_catalog: false,
+                                    message,
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Fallback: no metastore found or couldn't check
+        return Ok(UCPermissionCheck {
+            metastore: MetastoreInfo {
+                exists: false,
+                metastore_id: None,
+                metastore_name: None,
+                region: Some(region),
+            },
+            has_create_catalog: true,
+            has_create_external_location: true,
+            has_create_storage_credential: true,
+            can_create_catalog: true,
+            message: "No metastore found in region. A new one will be created.".to_string(),
+        });
+    }
+    
+    // Get service principal credentials
+    let client_id = credentials.databricks_client_id
+        .as_ref()
+        .filter(|s| !s.is_empty())
+        .ok_or("Client ID is required for permission check")?;
+    
+    let client_secret = credentials.databricks_client_secret
+        .as_ref()
+        .filter(|s| !s.is_empty())
+        .ok_or("Client Secret is required for permission check")?;
+    
+    // Determine accounts host
+    let accounts_host = if is_azure {
+        "accounts.azuredatabricks.net"
+    } else {
+        "accounts.cloud.databricks.com"
+    };
+    
+    // Get OAuth token
+    let token_url = format!(
+        "https://{}/oidc/accounts/{}/v1/token",
+        accounts_host, account_id
+    );
+
+    let client = reqwest::Client::new();
+    
+    let token_response = client
+        .post(&token_url)
+        .form(&[
+            ("grant_type", "client_credentials"),
+            ("scope", "all-apis"),
+        ])
+        .basic_auth(client_id, Some(client_secret))
+        .send()
+        .await
+        .map_err(|e| format!("Failed to get OAuth token: {}", e))?;
+
+    if !token_response.status().is_success() {
+        return Err("Failed to authenticate with Databricks".to_string());
+    }
+
+    let token_json: serde_json::Value = token_response
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse token: {}", e))?;
+
+    let access_token = token_json["access_token"]
+        .as_str()
+        .ok_or("No access token in response")?;
+
+    // List metastores
+    let metastores_url = format!(
+        "https://{}/api/2.1/unity-catalog/metastores",
+        accounts_host
+    );
+
+    let metastores_response = client
+        .get(&metastores_url)
+        .bearer_auth(access_token)
+        .send()
+        .await
+        .map_err(|e| format!("Failed to list metastores: {}", e))?;
+
+    if !metastores_response.status().is_success() {
+        // Can't list metastores, assume none exists
+        return Ok(UCPermissionCheck {
+            metastore: MetastoreInfo {
+                exists: false,
+                metastore_id: None,
+                metastore_name: None,
+                region: Some(region.clone()),
+            },
+            has_create_catalog: true,
+            has_create_external_location: true,
+            has_create_storage_credential: true,
+            can_create_catalog: true,
+            message: "No metastore found in region. A new one will be created.".to_string(),
+        });
+    }
+
+    let metastores_json: serde_json::Value = metastores_response
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse metastores: {}", e))?;
+
+    // Find metastore matching region
+    let metastores = metastores_json["metastores"].as_array();
+    let region_normalized = region.to_lowercase().replace(" ", "").replace("-", "");
+    
+    let matching_metastore = metastores.and_then(|arr| {
+        arr.iter().find(|m| {
+            let metastore_region = m["region"].as_str().unwrap_or("");
+            let metastore_region_normalized = metastore_region.to_lowercase().replace(" ", "").replace("-", "");
+            
+            // Match on exact normalized region
+            metastore_region_normalized == region_normalized
+        })
+    });
+
+    if let Some(metastore) = matching_metastore {
+        let metastore_id = metastore["metastore_id"].as_str().unwrap_or("");
+        let metastore_name = metastore["name"].as_str().unwrap_or("");
+        
+        // Check permissions on this metastore
+        let permissions_url = format!(
+            "https://{}/api/2.1/unity-catalog/permissions/metastore/{}",
+            accounts_host, metastore_id
+        );
+
+        let permissions_response = client
+            .get(&permissions_url)
+            .bearer_auth(access_token)
+            .send()
+            .await;
+
+        let (has_create_catalog, has_create_external_location, has_create_storage_credential) = 
+            if let Ok(resp) = permissions_response {
+                if resp.status().is_success() {
+                    if let Ok(perm_json) = resp.json::<serde_json::Value>().await {
+                        let assignments = perm_json["privilege_assignments"].as_array();
+                        let mut create_catalog = false;
+                        let mut create_ext_loc = false;
+                        let mut create_storage_cred = false;
+                        
+                        if let Some(arr) = assignments {
+                            for assignment in arr {
+                                if let Some(privileges) = assignment["privileges"].as_array() {
+                                    for priv_val in privileges {
+                                        let priv_str = priv_val.as_str().unwrap_or("");
+                                        match priv_str {
+                                            "CREATE_CATALOG" => create_catalog = true,
+                                            "CREATE_EXTERNAL_LOCATION" => create_ext_loc = true,
+                                            "CREATE_STORAGE_CREDENTIAL" => create_storage_cred = true,
+                                            "ALL_PRIVILEGES" => {
+                                                // Metastore admin has all privileges
+                                                create_catalog = true;
+                                                create_ext_loc = true;
+                                                create_storage_cred = true;
+                                            }
+                                            _ => {}
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        (create_catalog, create_ext_loc, create_storage_cred)
+                    } else {
+                        (false, false, false)
+                    }
+                } else {
+                    // If we can't check permissions, assume we have them
+                    // (the deployment will fail if we don't)
+                    (true, true, true)
+                }
+            } else {
+                (true, true, true)
+            };
+
+        let can_create = has_create_catalog && has_create_external_location && has_create_storage_credential;
+        let message = if can_create {
+            "You have the required permissions to create catalogs.".to_string()
+        } else {
+            let mut missing = Vec::new();
+            if !has_create_catalog { missing.push("CREATE_CATALOG"); }
+            if !has_create_storage_credential { missing.push("CREATE_STORAGE_CREDENTIAL"); }
+            if !has_create_external_location { missing.push("CREATE_EXTERNAL_LOCATION"); }
+            format!("Missing permissions: {}. Contact your Metastore Admin.", missing.join(", "))
+        };
+
+        Ok(UCPermissionCheck {
+            metastore: MetastoreInfo {
+                exists: true,
+                metastore_id: Some(metastore_id.to_string()),
+                metastore_name: Some(metastore_name.to_string()),
+                region: Some(region),
+            },
+            has_create_catalog,
+            has_create_external_location,
+            has_create_storage_credential,
+            can_create_catalog: can_create,
+            message,
+        })
+    } else {
+        // No metastore in region - will be created
+        Ok(UCPermissionCheck {
+            metastore: MetastoreInfo {
+                exists: false,
+                metastore_id: None,
+                metastore_name: None,
+                region: Some(region),
+            },
+            has_create_catalog: true,
+            has_create_external_location: true,
+            has_create_storage_credential: true,
+            can_create_catalog: true,
+            message: "No metastore found in region. A new one will be created.".to_string(),
+        })
+    }
 }
 

@@ -266,15 +266,43 @@ pub fn generate_tfvars(values: &HashMap<String, serde_json::Value>, variables: &
 }
 
 fn format_list(name: &str, arr: &[serde_json::Value]) -> String {
-    let items: Vec<String> = arr.iter()
-        .map(|v| match v {
-            serde_json::Value::String(s) => format!("\"{}\"", s),
-            serde_json::Value::Number(n) => n.to_string(),
-            serde_json::Value::Bool(b) => b.to_string(),
-            _ => "null".to_string(),
-        })
-        .collect();
-    format!("{} = [{}]", name, items.join(", "))
+    // Check if list contains objects (for list(object(...)) types)
+    let has_objects = arr.iter().any(|v| matches!(v, serde_json::Value::Object(_)));
+    
+    if has_objects {
+        // Format as list of objects with proper HCL syntax
+        let items: Vec<String> = arr.iter()
+            .filter_map(|v| {
+                if let serde_json::Value::Object(obj) = v {
+                    let fields: Vec<String> = obj.iter()
+                        .filter_map(|(k, v)| {
+                            match v {
+                                serde_json::Value::String(s) => Some(format!("    {} = \"{}\"", k, s)),
+                                serde_json::Value::Number(n) => Some(format!("    {} = {}", k, n)),
+                                serde_json::Value::Bool(b) => Some(format!("    {} = {}", k, b)),
+                                _ => None,
+                            }
+                        })
+                        .collect();
+                    Some(format!("  {{\n{}\n  }}", fields.join("\n")))
+                } else {
+                    None
+                }
+            })
+            .collect();
+        format!("{} = [\n{}\n]", name, items.join(",\n"))
+    } else {
+        // Simple list of primitives
+        let items: Vec<String> = arr.iter()
+            .map(|v| match v {
+                serde_json::Value::String(s) => format!("\"{}\"", s),
+                serde_json::Value::Number(n) => n.to_string(),
+                serde_json::Value::Bool(b) => b.to_string(),
+                _ => "null".to_string(),
+            })
+            .collect();
+        format!("{} = [{}]", name, items.join(", "))
+    }
 }
 
 fn format_map(name: &str, obj: &serde_json::Map<String, serde_json::Value>) -> String {

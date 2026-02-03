@@ -6,11 +6,15 @@ provider "aws" {
   }
 }
 
-# Databricks credentials via environment variables (DATABRICKS_CLIENT_ID, DATABRICKS_CLIENT_SECRET)
+# Databricks account provider
+# auth_type is set dynamically:
+# - "oauth-m2m" for service principal credentials
+# - "databricks-cli" for CLI profile authentication
 provider "databricks" {
   alias      = "mws"
   host       = "https://accounts.cloud.databricks.com"
   account_id = var.databricks_account_id
+  auth_type  = var.databricks_auth_type
 }
 
 provider "databricks" {

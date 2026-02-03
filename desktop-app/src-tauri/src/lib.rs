@@ -1,5 +1,6 @@
 mod commands;
 mod dependencies;
+mod errors;
 mod terraform;
 
 
@@ -44,6 +45,10 @@ pub fn run() {
             commands::clear_templates_cache,
             commands::get_deployments_folder,
             commands::open_folder,
+            commands::get_databricks_profiles,
+            commands::databricks_cli_login,
+            commands::get_databricks_profile_credentials,
+            commands::check_uc_permissions,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -11,7 +11,9 @@
   },
   "dependencies": {
     "react": "^18.2.0",
-    "react-dom": "^18.2.0"
+    "react-dom": "^18.2.0",
+    "sharp": "^0.34.5",
+    "to-ico": "^1.1.5"
   },
   "devDependencies": {
     "@tauri-apps/api": "^2.0.0",
