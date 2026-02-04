@@ -168,3 +168,23 @@ variable "databricks_auth_type" {
   type        = string
   default     = "oauth-m2m"
 }
+
+variable "databricks_client_id" {
+  description = "Databricks service principal client ID (required for oauth-m2m auth type)"
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "databricks_client_secret" {
+  description = "Databricks service principal client secret (required for oauth-m2m auth type)"
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "databricks_profile" {
+  description = "Databricks CLI profile name (required for databricks-cli auth type)"
+  type        = string
+  default     = ""
+}

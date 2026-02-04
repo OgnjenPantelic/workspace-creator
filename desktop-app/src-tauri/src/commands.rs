@@ -30,12 +30,18 @@ pub struct CloudCredentials {
     pub azure_subscription_id: Option<String>,
     pub azure_client_id: Option<String>,
     pub azure_client_secret: Option<String>,
+    // GCP
+    pub gcp_project_id: Option<String>,
+    pub gcp_credentials_json: Option<String>,      // Service account JSON content
+    pub gcp_use_adc: Option<bool>,                 // Use Application Default Credentials
     // Databricks
     pub databricks_account_id: Option<String>,
     pub databricks_client_id: Option<String>,
     pub databricks_client_secret: Option<String>,
     pub databricks_profile: Option<String>,        // Profile name from ~/.databrickscfg
     pub databricks_auth_type: Option<String>,      // "profile" or "credentials"
+    // Cloud identifier (optional, for explicit cloud selection)
+    pub cloud: Option<String>,                     // "aws", "azure", or "gcp"
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -52,7 +58,7 @@ pub struct AwsIdentity {
 }
 
 // Version marker to track template updates - increment when templates change
-const TEMPLATES_VERSION: &str = "2.9.0";
+const TEMPLATES_VERSION: &str = "2.22.0";
 
 pub fn setup_templates(app: &AppHandle) -> Result<(), String> {
     let app_data_dir = app
@@ -288,10 +294,10 @@ pub async fn databricks_cli_login(cloud: String, account_id: String) -> Result<S
         .ok_or_else(|| crate::errors::cli_not_found("Databricks CLI"))?;
     
     // Determine the account host based on cloud
-    let host = if cloud == "azure" {
-        "https://accounts.azuredatabricks.net"
-    } else {
-        "https://accounts.cloud.databricks.com"
+    let host = match cloud.as_str() {
+        "azure" => "https://accounts.azuredatabricks.net",
+        "gcp" => "https://accounts.gcp.databricks.com",
+        _ => "https://accounts.cloud.databricks.com", // AWS is default
     };
     
     // Create a profile name based on the account ID (first 8 chars)
@@ -394,6 +400,100 @@ pub fn get_databricks_profile_credentials(profile_name: String) -> Result<HashMa
     }
 }
 
+/// Create a Databricks CLI profile with service principal credentials
+/// This allows Terraform to use profile-based auth with SP credentials
+#[tauri::command]
+pub fn create_databricks_sp_profile(
+    cloud: String,
+    account_id: String,
+    client_id: String,
+    client_secret: String,
+) -> Result<String, String> {
+    // Determine host based on cloud
+    let host = match cloud.as_str() {
+        "aws" => "https://accounts.cloud.databricks.com",
+        "azure" => "https://accounts.azuredatabricks.net",
+        "gcp" => "https://accounts.gcp.databricks.com",
+        _ => return Err(format!("Unsupported cloud: {}", cloud)),
+    };
+    
+    // Generate profile name
+    let profile_name = format!("deployer-sp-{}", &account_id[..8.min(account_id.len())]);
+    
+    // Get or create config file path
+    let config_path = dependencies::get_databricks_config_path()
+        .unwrap_or_else(|| {
+            dirs::home_dir()
+                .map(|h| h.join(".databrickscfg"))
+                .expect("Could not determine home directory")
+        });
+    
+    // Read existing config or start with empty string
+    let existing_content = fs::read_to_string(&config_path).unwrap_or_default();
+    
+    // Build the new profile section
+    let new_profile_section = format!(
+        "[{}]\nhost = {}\naccount_id = {}\nclient_id = {}\nclient_secret = {}\n",
+        profile_name, host, account_id, client_id, client_secret
+    );
+    
+    // Check if profile already exists and update/append
+    let mut new_content = String::new();
+    let mut in_target_profile = false;
+    let mut profile_replaced = false;
+    let mut skip_until_next_section = false;
+    
+    for line in existing_content.lines() {
+        let trimmed = line.trim();
+        
+        // Check for section headers
+        if trimmed.starts_with('[') && trimmed.ends_with(']') {
+            let section_name = &trimmed[1..trimmed.len()-1];
+            
+            if in_target_profile {
+                // We were in the target profile, now leaving it
+                in_target_profile = false;
+                skip_until_next_section = false;
+            }
+            
+            if section_name == profile_name {
+                // Found existing profile - skip it and we'll add the new one
+                in_target_profile = true;
+                skip_until_next_section = true;
+                profile_replaced = true;
+                // Add the new profile section instead
+                new_content.push_str(&new_profile_section);
+                new_content.push('\n');
+                continue;
+            }
+        }
+        
+        if !skip_until_next_section {
+            new_content.push_str(line);
+            new_content.push('\n');
+        }
+    }
+    
+    // If profile didn't exist, append it
+    if !profile_replaced {
+        if !new_content.is_empty() && !new_content.ends_with("\n\n") {
+            new_content.push('\n');
+        }
+        new_content.push_str(&new_profile_section);
+    }
+    
+    // Ensure parent directory exists
+    if let Some(parent) = config_path.parent() {
+        fs::create_dir_all(parent).map_err(|e| format!("Failed to create config directory: {}", e))?;
+    }
+    
+    // Write the config file
+    fs::write(&config_path, new_content)
+        .map_err(|e| format!("Failed to write config file: {}", e))?;
+    
+    Ok(profile_name)
+}
+
 #[tauri::command]
 pub async fn install_terraform() -> Result<String, String> {
     let url = dependencies::get_terraform_download_url();
@@ -454,10 +554,10 @@ pub async fn validate_databricks_credentials(
     cloud: String,
 ) -> Result<String, String> {
     // Use correct host based on cloud provider
-    let accounts_host = if cloud == "azure" {
-        "accounts.azuredatabricks.net"
-    } else {
-        "accounts.cloud.databricks.com"
+    let accounts_host = match cloud.as_str() {
+        "azure" => "accounts.azuredatabricks.net",
+        "gcp" => "accounts.gcp.databricks.com",
+        _ => "accounts.cloud.databricks.com", // AWS is default
     };
     
     // Get OAuth token from Databricks
@@ -583,6 +683,24 @@ pub fn get_templates(app: AppHandle) -> Result<Vec<Template>, String> {
         });
     }
     
+    // GCP Simple
+    if templates_dir.join("gcp-simple").exists() {
+        templates.push(Template {
+            id: "gcp-simple".to_string(),
+            name: "GCP Standard Workspace".to_string(),
+            cloud: "gcp".to_string(),
+            description: "Secure baseline deployment with managed or customer-managed VPC".to_string(),
+            features: vec![
+                "Databricks-managed VPC (default) or customer-managed".to_string(),
+                "GCS bucket configuration".to_string(),
+                "Service account setup".to_string(),
+                "Network security rules".to_string(),
+                "Production-ready security".to_string(),
+                "Unity Catalog integration".to_string(),
+            ],
+        });
+    }
+    
     Ok(templates)
 }
 
@@ -653,15 +771,59 @@ pub fn save_configuration(
             }
         }
         // Databricks auth type for Terraform provider
-        // "profile" -> "databricks-cli", "credentials" -> "oauth-m2m"
+        // For profile mode: use "oauth-m2m" if profile has SP credentials, otherwise "databricks-cli"
+        // For credentials mode: always use "oauth-m2m"
         let auth_type = match creds.databricks_auth_type.as_deref() {
-            Some("profile") => "databricks-cli",
+            Some("profile") => {
+                // Check if profile has SP credentials (client_id and client_secret are populated)
+                let has_sp_creds = creds.databricks_client_id.as_ref().map(|s| !s.is_empty()).unwrap_or(false)
+                    && creds.databricks_client_secret.as_ref().map(|s| !s.is_empty()).unwrap_or(false);
+                if has_sp_creds {
+                    "oauth-m2m"  // Use SP auth for profiles with client credentials
+                } else {
+                    "databricks-cli"  // Use CLI auth for SSO profiles
+                }
+            },
             _ => "oauth-m2m",
         };
         merged_values.insert(
             "databricks_auth_type".to_string(),
             serde_json::Value::String(auth_type.to_string()),
         );
+        
+        // For Azure: pass Databricks auth as Terraform variables (not env vars)
+        // to avoid conflict with azure_workspace_resource_id auth in workspace provider
+        if creds.cloud.as_deref() == Some("azure") {
+            if auth_type == "oauth-m2m" {
+                // SP auth: pass client_id and client_secret
+                if let Some(client_id) = &creds.databricks_client_id {
+                    if !client_id.is_empty() {
+                        merged_values.insert(
+                            "databricks_client_id".to_string(),
+                            serde_json::Value::String(client_id.clone()),
+                        );
+                    }
+                }
+                if let Some(client_secret) = &creds.databricks_client_secret {
+                    if !client_secret.is_empty() {
+                        merged_values.insert(
+                            "databricks_client_secret".to_string(),
+                            serde_json::Value::String(client_secret.clone()),
+                        );
+                    }
+                }
+            } else {
+                // SSO profile auth: pass profile name
+                if let Some(profile) = &creds.databricks_profile {
+                    if !profile.is_empty() {
+                        merged_values.insert(
+                            "databricks_profile".to_string(),
+                            serde_json::Value::String(profile.clone()),
+                        );
+                    }
+                }
+            }
+        }
         
         // Azure tenant ID is needed as a terraform variable for Azure templates
         if let Some(tenant_id) = &creds.azure_tenant_id {
@@ -734,13 +896,24 @@ fn build_env_vars(credentials: &CloudCredentials) -> HashMap<String, String> {
     // Handle Databricks auth based on auth_type
     let databricks_auth_type = credentials.databricks_auth_type.as_deref().unwrap_or("credentials");
     
-    if databricks_auth_type == "profile" {
-        // Use profile-based authentication
-        set_env_if_present(&mut env_vars, "DATABRICKS_CONFIG_PROFILE", &credentials.databricks_profile);
-    } else {
-        // Use client credentials (service principal)
-        set_env_if_present(&mut env_vars, "DATABRICKS_CLIENT_ID", &credentials.databricks_client_id);
-        set_env_if_present(&mut env_vars, "DATABRICKS_CLIENT_SECRET", &credentials.databricks_client_secret);
+    // Check if profile has SP credentials
+    let profile_has_sp_creds = databricks_auth_type == "profile" 
+        && credentials.databricks_client_id.as_ref().map(|s| !s.is_empty()).unwrap_or(false)
+        && credentials.databricks_client_secret.as_ref().map(|s| !s.is_empty()).unwrap_or(false);
+    
+    // For Azure: Don't set DATABRICKS_* env vars - they conflict with azure_workspace_resource_id
+    // in the workspace provider. All Databricks auth is passed via Terraform variables instead.
+    let is_azure = credentials.cloud.as_deref() == Some("azure");
+    
+    if !is_azure {
+        if databricks_auth_type == "profile" && !profile_has_sp_creds {
+            // Use profile-based authentication with OAuth token cache (SSO profiles)
+            set_env_if_present(&mut env_vars, "DATABRICKS_CONFIG_PROFILE", &credentials.databricks_profile);
+        } else {
+            // Use client credentials (service principal) - either direct or from profile
+            set_env_if_present(&mut env_vars, "DATABRICKS_CLIENT_ID", &credentials.databricks_client_id);
+            set_env_if_present(&mut env_vars, "DATABRICKS_CLIENT_SECRET", &credentials.databricks_client_secret);
+        }
     }
     
     env_vars
@@ -941,11 +1114,15 @@ pub fn get_cloud_credentials(cloud: String) -> Result<CloudCredentials, String> 
         azure_subscription_id: None,
         azure_client_id: None,
         azure_client_secret: None,
+        gcp_project_id: None,
+        gcp_credentials_json: None,
+        gcp_use_adc: None,
         databricks_account_id: None,
         databricks_client_id: None,
         databricks_client_secret: None,
         databricks_profile: None,
         databricks_auth_type: None,
+        cloud: Some(cloud.clone()),
     };
     
     match cloud.as_str() {
@@ -962,6 +1139,13 @@ pub fn get_cloud_credentials(cloud: String) -> Result<CloudCredentials, String> 
             creds.azure_subscription_id = std::env::var("ARM_SUBSCRIPTION_ID").ok();
             creds.azure_client_id = std::env::var("ARM_CLIENT_ID").ok();
             creds.azure_client_secret = std::env::var("ARM_CLIENT_SECRET").ok();
+        }
+        "gcp" => {
+            creds.gcp_project_id = std::env::var("GOOGLE_PROJECT").ok()
+                .or_else(|| std::env::var("GCLOUD_PROJECT").ok());
+            // GOOGLE_CREDENTIALS is usually a JSON string
+            creds.gcp_credentials_json = std::env::var("GOOGLE_CREDENTIALS").ok();
+            creds.gcp_use_adc = Some(creds.gcp_credentials_json.is_none());
         }
         _ => {}
     }
@@ -1386,6 +1570,16 @@ pub fn open_folder(path: String) -> Result<(), String> {
     Ok(())
 }
 
+// Cloud permission check types
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CloudPermissionCheck {
+    pub has_all_permissions: bool,
+    pub checked_permissions: Vec<String>,
+    pub missing_permissions: Vec<String>,
+    pub message: String,
+    pub is_warning: bool,  // true = soft warning (can continue), false = hard block
+}
+
 // Unity Catalog permission check types
 #[derive(Debug, Serialize, Deserialize)]
 pub struct MetastoreInfo {
@@ -1407,16 +1601,28 @@ pub struct UCPermissionCheck {
 
 /// Generate a message about metastore ownership for permission guidance
 fn get_metastore_owner_info(metastore_owner: &str) -> String {
-    let owner_is_group = !metastore_owner.contains('@');
+    // Detect owner type:
+    // - Contains '@' → user (email)
+    // - Matches UUID pattern → service principal
+    // - Otherwise → group name
+    let is_user = metastore_owner.contains('@');
+    let is_uuid = metastore_owner.len() == 36 
+        && metastore_owner.chars().filter(|c| *c == '-').count() == 4
+        && metastore_owner.chars().all(|c| c.is_ascii_hexdigit() || c == '-');
     
-    if owner_is_group {
+    if is_user {
         format!(
-            "Metastore owned by group '{}'. You need the required permissions granted on this metastore.",
+            "Metastore owned by user '{}'. You need the required permissions granted on this metastore.",
+            metastore_owner
+        )
+    } else if is_uuid {
+        format!(
+            "Metastore owned by service principal '{}'. You need the required permissions granted on this metastore.",
             metastore_owner
         )
     } else {
         format!(
-            "Metastore owned by '{}'. You need the required permissions granted on this metastore.",
+            "Metastore owned by group '{}'. You need the required permissions granted on this metastore.",
             metastore_owner
         )
     }
@@ -1428,8 +1634,16 @@ pub async fn check_uc_permissions(
     credentials: CloudCredentials,
     region: String,
 ) -> Result<UCPermissionCheck, String> {
-    // Determine if we're using Azure or AWS
-    let is_azure = credentials.azure_tenant_id.is_some();
+    // Determine the cloud provider
+    let cloud = credentials.cloud.as_deref().unwrap_or_else(|| {
+        if credentials.azure_tenant_id.is_some() {
+            "azure"
+        } else if credentials.gcp_project_id.is_some() {
+            "gcp"
+        } else {
+            "aws"
+        }
+    });
     
     // Get account ID
     let account_id = credentials.databricks_account_id
@@ -1521,11 +1735,11 @@ pub async fn check_uc_permissions(
         .filter(|s| !s.is_empty())
         .ok_or("Client Secret is required for permission check")?;
     
-    // Determine accounts host
-    let accounts_host = if is_azure {
-        "accounts.azuredatabricks.net"
-    } else {
-        "accounts.cloud.databricks.com"
+    // Determine accounts host based on cloud
+    let accounts_host = match cloud {
+        "azure" => "accounts.azuredatabricks.net",
+        "gcp" => "accounts.gcp.databricks.com",
+        _ => "accounts.cloud.databricks.com", // AWS is default
     };
     
     // Get OAuth token
@@ -1708,5 +1922,582 @@ pub async fn check_uc_permissions(
             message: "No metastore found in region. A new one will be created.".to_string(),
         })
     }
+}
+
+/// Check AWS IAM permissions using the IAM Policy Simulator
+#[tauri::command]
+pub async fn check_aws_permissions(
+    credentials: CloudCredentials,
+) -> Result<CloudPermissionCheck, String> {
+    // Required actions for Databricks workspace deployment
+    let required_actions = vec![
+        "ec2:CreateVpc",
+        "ec2:CreateSubnet",
+        "ec2:CreateInternetGateway",
+        "ec2:AttachInternetGateway",
+        "ec2:CreateNatGateway",
+        "ec2:AllocateAddress",
+        "ec2:CreateRouteTable",
+        "ec2:CreateRoute",
+        "ec2:AssociateRouteTable",
+        "ec2:CreateSecurityGroup",
+        "ec2:AuthorizeSecurityGroupIngress",
+        "ec2:AuthorizeSecurityGroupEgress",
+        "s3:CreateBucket",
+        "s3:PutBucketPolicy",
+        "s3:PutBucketEncryption",
+        "s3:PutBucketPublicAccessBlock",
+        "s3:PutBucketVersioning",
+        "iam:CreateRole",
+        "iam:AttachRolePolicy",
+        "iam:PutRolePolicy",
+        "iam:CreateInstanceProfile",
+        "iam:AddRoleToInstanceProfile",
+        "iam:PassRole",
+    ];
+    
+    // Find AWS CLI
+    let aws_cli = dependencies::find_aws_cli_path()
+        .ok_or("AWS CLI not found. Please install it first.")?;
+    
+    // First, get the caller identity to get the ARN
+    let mut identity_cmd = std::process::Command::new(&aws_cli);
+    identity_cmd.args(["sts", "get-caller-identity", "--output", "json"]);
+    
+    // Apply AWS credentials
+    if let Some(profile) = &credentials.aws_profile {
+        if !profile.is_empty() {
+            identity_cmd.env("AWS_PROFILE", profile);
+        }
+    }
+    if let Some(key) = &credentials.aws_access_key_id {
+        if !key.is_empty() {
+            identity_cmd.env("AWS_ACCESS_KEY_ID", key);
+        }
+    }
+    if let Some(secret) = &credentials.aws_secret_access_key {
+        if !secret.is_empty() {
+            identity_cmd.env("AWS_SECRET_ACCESS_KEY", secret);
+        }
+    }
+    if let Some(token) = &credentials.aws_session_token {
+        if !token.is_empty() {
+            identity_cmd.env("AWS_SESSION_TOKEN", token);
+        }
+    }
+    
+    let identity_output = identity_cmd.output()
+        .map_err(|e| format!("Failed to get AWS identity: {}", e))?;
+    
+    if !identity_output.status.success() {
+        // Can't get identity - skip permission check gracefully
+        return Ok(CloudPermissionCheck {
+            has_all_permissions: true,
+            checked_permissions: vec![],
+            missing_permissions: vec![],
+            message: "Unable to verify AWS identity. Permission check skipped.".to_string(),
+            is_warning: true,
+        });
+    }
+    
+    let identity_json: serde_json::Value = serde_json::from_slice(&identity_output.stdout)
+        .map_err(|e| format!("Failed to parse identity: {}", e))?;
+    
+    let caller_arn = identity_json["Arn"]
+        .as_str()
+        .ok_or("No ARN in identity response")?;
+    
+    // Build the simulate-principal-policy command
+    let mut simulate_cmd = std::process::Command::new(&aws_cli);
+    simulate_cmd.args([
+        "iam", "simulate-principal-policy",
+        "--policy-source-arn", caller_arn,
+        "--action-names",
+    ]);
+    
+    // Add all required actions
+    for action in &required_actions {
+        simulate_cmd.arg(action);
+    }
+    simulate_cmd.args(["--output", "json"]);
+    
+    // Apply credentials again
+    if let Some(profile) = &credentials.aws_profile {
+        if !profile.is_empty() {
+            simulate_cmd.env("AWS_PROFILE", profile);
+        }
+    }
+    if let Some(key) = &credentials.aws_access_key_id {
+        if !key.is_empty() {
+            simulate_cmd.env("AWS_ACCESS_KEY_ID", key);
+        }
+    }
+    if let Some(secret) = &credentials.aws_secret_access_key {
+        if !secret.is_empty() {
+            simulate_cmd.env("AWS_SECRET_ACCESS_KEY", secret);
+        }
+    }
+    if let Some(token) = &credentials.aws_session_token {
+        if !token.is_empty() {
+            simulate_cmd.env("AWS_SESSION_TOKEN", token);
+        }
+    }
+    
+    let simulate_output = simulate_cmd.output()
+        .map_err(|e| format!("Failed to simulate policy: {}", e))?;
+    
+    if !simulate_output.status.success() {
+        let stderr = String::from_utf8_lossy(&simulate_output.stderr);
+        
+        // Check if it's a permission error (user lacks iam:SimulatePrincipalPolicy)
+        if stderr.contains("AccessDenied") || stderr.contains("not authorized") {
+            return Ok(CloudPermissionCheck {
+                has_all_permissions: true,
+                checked_permissions: vec![],
+                missing_permissions: vec![],
+                message: "Unable to check permissions (missing iam:SimulatePrincipalPolicy). Proceeding without verification.".to_string(),
+                is_warning: true,
+            });
+        }
+        
+        // Other errors - skip check gracefully
+        return Ok(CloudPermissionCheck {
+            has_all_permissions: true,
+            checked_permissions: vec![],
+            missing_permissions: vec![],
+            message: format!("Permission check failed: {}. Proceeding without verification.", stderr.trim()),
+            is_warning: true,
+        });
+    }
+    
+    // Parse the simulation results
+    let results_json: serde_json::Value = serde_json::from_slice(&simulate_output.stdout)
+        .map_err(|e| format!("Failed to parse simulation results: {}", e))?;
+    
+    let mut checked_permissions = Vec::new();
+    let mut missing_permissions = Vec::new();
+    
+    if let Some(evaluations) = results_json["EvaluationResults"].as_array() {
+        for eval in evaluations {
+            let action = eval["EvalActionName"].as_str().unwrap_or("unknown");
+            let decision = eval["EvalDecision"].as_str().unwrap_or("unknown");
+            
+            checked_permissions.push(action.to_string());
+            
+            if decision != "allowed" {
+                missing_permissions.push(action.to_string());
+            }
+        }
+    }
+    
+    let has_all = missing_permissions.is_empty();
+    let message = if has_all {
+        "All required AWS permissions verified.".to_string()
+    } else {
+        format!(
+            "Missing {} permission(s): {}. This might be a false positive if you have custom IAM policies.",
+            missing_permissions.len(),
+            missing_permissions.join(", ")
+        )
+    };
+    
+    Ok(CloudPermissionCheck {
+        has_all_permissions: has_all,
+        checked_permissions,
+        missing_permissions,
+        message,
+        is_warning: true, // Always a soft warning, never block
+    })
+}
+
+/// Check Azure RBAC permissions by verifying role assignments
+#[tauri::command]
+pub async fn check_azure_permissions(
+    credentials: CloudCredentials,
+) -> Result<CloudPermissionCheck, String> {
+    // Required roles for Databricks deployment
+    // Either Contributor + User Access Administrator, or more granular roles
+    let required_roles = vec![
+        "Contributor".to_string(),
+        "User Access Administrator".to_string(),
+    ];
+    
+    let alternative_roles = vec![
+        "Network Contributor".to_string(),
+        "Storage Account Contributor".to_string(),
+        "User Access Administrator".to_string(),
+    ];
+    
+    // Find Azure CLI
+    let az_cli = dependencies::find_azure_cli_path()
+        .ok_or("Azure CLI not found. Please install it first.")?;
+    
+    let subscription_id = credentials.azure_subscription_id
+        .as_ref()
+        .filter(|s| !s.is_empty())
+        .ok_or("Azure subscription ID is required for permission check")?;
+    
+    // Get current signed-in principal info
+    let mut account_cmd = std::process::Command::new(&az_cli);
+    account_cmd.args(["account", "show", "--output", "json"]);
+    
+    let account_output = account_cmd.output()
+        .map_err(|e| format!("Failed to get Azure account: {}", e))?;
+    
+    if !account_output.status.success() {
+        return Ok(CloudPermissionCheck {
+            has_all_permissions: true,
+            checked_permissions: vec![],
+            missing_permissions: vec![],
+            message: "Unable to verify Azure account. Permission check skipped.".to_string(),
+            is_warning: true,
+        });
+    }
+    
+    // For CLI auth, we need to get the signed-in user's object ID
+    // For service principal auth, use the client_id
+    let assignee = if let Some(client_id) = &credentials.azure_client_id {
+        if !client_id.is_empty() {
+            client_id.clone()
+        } else {
+            // Get from signed-in account
+            let account_json: serde_json::Value = serde_json::from_slice(&account_output.stdout)
+                .unwrap_or_default();
+            account_json["user"]["name"].as_str().unwrap_or("").to_string()
+        }
+    } else {
+        // Get from signed-in account
+        let account_json: serde_json::Value = serde_json::from_slice(&account_output.stdout)
+            .unwrap_or_default();
+        account_json["user"]["name"].as_str().unwrap_or("").to_string()
+    };
+    
+    if assignee.is_empty() {
+        return Ok(CloudPermissionCheck {
+            has_all_permissions: true,
+            checked_permissions: vec![],
+            missing_permissions: vec![],
+            message: "Unable to determine Azure principal. Permission check skipped.".to_string(),
+            is_warning: true,
+        });
+    }
+    
+    // List role assignments for the principal
+    let mut role_cmd = std::process::Command::new(&az_cli);
+    role_cmd.args([
+        "role", "assignment", "list",
+        "--assignee", &assignee,
+        "--subscription", subscription_id,
+        "--query", "[].roleDefinitionName",
+        "--output", "json",
+    ]);
+    
+    let role_output = role_cmd.output()
+        .map_err(|e| format!("Failed to list role assignments: {}", e))?;
+    
+    if !role_output.status.success() {
+        let stderr = String::from_utf8_lossy(&role_output.stderr);
+        
+        // Check for permission errors
+        if stderr.contains("AuthorizationFailed") || stderr.contains("does not have authorization") {
+            return Ok(CloudPermissionCheck {
+                has_all_permissions: true,
+                checked_permissions: vec![],
+                missing_permissions: vec![],
+                message: "Unable to check role assignments (insufficient permissions). Proceeding without verification.".to_string(),
+                is_warning: true,
+            });
+        }
+        
+        return Ok(CloudPermissionCheck {
+            has_all_permissions: true,
+            checked_permissions: vec![],
+            missing_permissions: vec![],
+            message: format!("Permission check failed: {}. Proceeding without verification.", stderr.trim()),
+            is_warning: true,
+        });
+    }
+    
+    // Parse assigned roles
+    let assigned_roles: Vec<String> = serde_json::from_slice(&role_output.stdout)
+        .unwrap_or_default();
+    
+    // Check if primary role set is satisfied
+    let has_primary_roles = required_roles.iter()
+        .all(|r| assigned_roles.iter().any(|a| a.eq_ignore_ascii_case(r)));
+    
+    // Check if alternative role set is satisfied
+    let has_alternative_roles = alternative_roles.iter()
+        .all(|r| assigned_roles.iter().any(|a| a.eq_ignore_ascii_case(r)));
+    
+    // Also check for Owner role which grants everything
+    let has_owner = assigned_roles.iter().any(|r| r.eq_ignore_ascii_case("Owner"));
+    
+    let has_all = has_owner || has_primary_roles || has_alternative_roles;
+    
+    let checked_permissions: Vec<String> = required_roles.clone();
+    
+    let missing_permissions: Vec<String> = if has_all {
+        vec![]
+    } else {
+        required_roles.iter()
+            .filter(|r| !assigned_roles.iter().any(|a| a.eq_ignore_ascii_case(r)))
+            .cloned()
+            .collect()
+    };
+    
+    let message = if has_all {
+        if has_owner {
+            "Owner role verified - all permissions available.".to_string()
+        } else {
+            "Required Azure roles verified.".to_string()
+        }
+    } else {
+        format!(
+            "Missing role(s): {}. This might be a false positive if you have custom roles or inherited permissions.",
+            missing_permissions.join(", ")
+        )
+    };
+    
+    Ok(CloudPermissionCheck {
+        has_all_permissions: has_all,
+        checked_permissions,
+        missing_permissions,
+        message,
+        is_warning: true, // Always a soft warning, never block
+    })
+}
+
+/// Validate GCP credentials using gcloud CLI
+#[derive(Debug, Serialize, Deserialize)]
+pub struct GcpValidation {
+    pub valid: bool,
+    pub project_id: Option<String>,
+    pub account: Option<String>,
+    pub message: String,
+}
+
+#[tauri::command]
+pub async fn validate_gcp_credentials(
+    credentials: CloudCredentials,
+) -> Result<GcpValidation, String> {
+    // Find gcloud CLI
+    let gcloud_cli = dependencies::find_gcloud_cli_path()
+        .ok_or("Google Cloud CLI not found. Please install it first.")?;
+    
+    // Check if using ADC or service account JSON
+    let use_adc = credentials.gcp_use_adc.unwrap_or(true);
+    
+    if use_adc {
+        // Validate Application Default Credentials
+        // First, try to get an access token
+        let mut token_cmd = std::process::Command::new(&gcloud_cli);
+        token_cmd.args(["auth", "application-default", "print-access-token"]);
+        
+        let token_output = token_cmd.output()
+            .map_err(|e| format!("Failed to run gcloud: {}", e))?;
+        
+        if !token_output.status.success() {
+            let stderr = String::from_utf8_lossy(&token_output.stderr);
+            return Ok(GcpValidation {
+                valid: false,
+                project_id: None,
+                account: None,
+                message: format!("No Application Default Credentials found. Please run 'gcloud auth application-default login' first. Error: {}", stderr.trim()),
+            });
+        }
+        
+        // Get the current account
+        let mut account_cmd = std::process::Command::new(&gcloud_cli);
+        account_cmd.args(["config", "get-value", "account"]);
+        
+        let account_output = account_cmd.output()
+            .map_err(|e| format!("Failed to get account: {}", e))?;
+        
+        let account = if account_output.status.success() {
+            let acc = String::from_utf8_lossy(&account_output.stdout).trim().to_string();
+            if acc.is_empty() { None } else { Some(acc) }
+        } else {
+            None
+        };
+        
+        // Get the default project
+        let mut project_cmd = std::process::Command::new(&gcloud_cli);
+        project_cmd.args(["config", "get-value", "project"]);
+        
+        let project_output = project_cmd.output()
+            .map_err(|e| format!("Failed to get project: {}", e))?;
+        
+        let project_id = if project_output.status.success() {
+            let proj = String::from_utf8_lossy(&project_output.stdout).trim().to_string();
+            if proj.is_empty() { None } else { Some(proj) }
+        } else {
+            None
+        };
+        
+        // Use provided project ID if available
+        let final_project_id = credentials.gcp_project_id.clone().or(project_id);
+        
+        Ok(GcpValidation {
+            valid: true,
+            project_id: final_project_id,
+            account,
+            message: "Application Default Credentials validated successfully.".to_string(),
+        })
+    } else {
+        // Validate service account JSON
+        let sa_json = credentials.gcp_credentials_json
+            .as_ref()
+            .filter(|s| !s.is_empty())
+            .ok_or("Service account JSON is required")?;
+        
+        // Parse the JSON to extract info
+        let sa_data: serde_json::Value = serde_json::from_str(sa_json)
+            .map_err(|e| format!("Invalid service account JSON: {}", e))?;
+        
+        let sa_type = sa_data["type"].as_str().unwrap_or("");
+        if sa_type != "service_account" {
+            return Ok(GcpValidation {
+                valid: false,
+                project_id: None,
+                account: None,
+                message: format!("Invalid credential type: '{}'. Expected 'service_account'.", sa_type),
+            });
+        }
+        
+        let project_id = sa_data["project_id"].as_str().map(|s| s.to_string());
+        let client_email = sa_data["client_email"].as_str().map(|s| s.to_string());
+        
+        if project_id.is_none() || client_email.is_none() {
+            return Ok(GcpValidation {
+                valid: false,
+                project_id: None,
+                account: None,
+                message: "Service account JSON is missing 'project_id' or 'client_email' fields.".to_string(),
+            });
+        }
+        
+        // Optionally verify the credentials work by attempting auth
+        // For now, just validate the JSON structure
+        // In a full implementation, you could write to a temp file and test with gcloud
+        
+        Ok(GcpValidation {
+            valid: true,
+            project_id: credentials.gcp_project_id.clone().or(project_id),
+            account: client_email,
+            message: "Service account credentials validated.".to_string(),
+        })
+    }
+}
+
+/// Check GCP IAM permissions using gcloud
+#[tauri::command]
+pub async fn check_gcp_permissions(
+    credentials: CloudCredentials,
+) -> Result<CloudPermissionCheck, String> {
+    // Required permissions for Databricks workspace deployment
+    let required_permissions = vec![
+        "compute.networks.create",
+        "compute.subnetworks.create",
+        "compute.firewalls.create",
+        "storage.buckets.create",
+        "storage.buckets.setIamPolicy",
+        "iam.serviceAccounts.create",
+        "iam.serviceAccounts.setIamPolicy",
+    ];
+    
+    // Find gcloud CLI
+    let gcloud_cli = dependencies::find_gcloud_cli_path()
+        .ok_or("Google Cloud CLI not found. Please install it first.")?;
+    
+    let project_id = credentials.gcp_project_id
+        .as_ref()
+        .filter(|s| !s.is_empty())
+        .ok_or("GCP project ID is required for permission check")?;
+    
+    // Build the test-iam-permissions command
+    let permissions_arg = required_permissions.join(",");
+    
+    let mut cmd = std::process::Command::new(&gcloud_cli);
+    cmd.args([
+        "projects", "test-iam-permissions",
+        project_id,
+        &format!("--permissions={}", permissions_arg),
+        "--format=json",
+    ]);
+    
+    // If using service account JSON, set GOOGLE_APPLICATION_CREDENTIALS or use gcloud auth
+    if let Some(sa_json) = &credentials.gcp_credentials_json {
+        if !sa_json.is_empty() {
+            // Write SA JSON to a temporary file
+            let temp_dir = std::env::temp_dir();
+            let temp_file = temp_dir.join("gcp_sa_temp.json");
+            fs::write(&temp_file, sa_json)
+                .map_err(|e| format!("Failed to write temp credentials: {}", e))?;
+            cmd.env("GOOGLE_APPLICATION_CREDENTIALS", &temp_file);
+        }
+    }
+    
+    let output = cmd.output()
+        .map_err(|e| format!("Failed to run gcloud: {}", e))?;
+    
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        
+        // Check for permission errors
+        if stderr.contains("PERMISSION_DENIED") || stderr.contains("403") {
+            return Ok(CloudPermissionCheck {
+                has_all_permissions: true,
+                checked_permissions: vec![],
+                missing_permissions: vec![],
+                message: "Unable to check permissions (insufficient access). Proceeding without verification.".to_string(),
+                is_warning: true,
+            });
+        }
+        
+        return Ok(CloudPermissionCheck {
+            has_all_permissions: true,
+            checked_permissions: vec![],
+            missing_permissions: vec![],
+            message: format!("Permission check failed: {}. Proceeding without verification.", stderr.trim()),
+            is_warning: true,
+        });
+    }
+    
+    // Parse the results
+    let results_json: serde_json::Value = serde_json::from_slice(&output.stdout)
+        .map_err(|e| format!("Failed to parse permission check results: {}", e))?;
+    
+    let granted_permissions: Vec<String> = results_json["permissions"]
+        .as_array()
+        .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+        .unwrap_or_default();
+    
+    let checked_permissions: Vec<String> = required_permissions.iter().map(|s| s.to_string()).collect();
+    
+    let missing_permissions: Vec<String> = required_permissions.iter()
+        .filter(|p| !granted_permissions.contains(&p.to_string()))
+        .map(|s| s.to_string())
+        .collect();
+    
+    let has_all = missing_permissions.is_empty();
+    
+    let message = if has_all {
+        "All required GCP permissions verified.".to_string()
+    } else {
+        format!(
+            "Missing {} permission(s): {}. Contact your GCP administrator.",
+            missing_permissions.len(),
+            missing_permissions.join(", ")
+        )
+    };
+    
+    Ok(CloudPermissionCheck {
+        has_all_permissions: has_all,
+        checked_permissions,
+        missing_permissions,
+        message,
+        is_warning: true, // Always a soft warning, never block
+    })
 }
 

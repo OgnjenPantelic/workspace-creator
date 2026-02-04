@@ -236,10 +236,12 @@ fn create_profile(name: &str, data: &HashMap<String, String>) -> Option<Databric
     // Determine cloud from host
     let cloud = if host.contains("azuredatabricks") {
         "azure".to_string()
+    } else if host.contains("gcp.databricks.com") {
+        "gcp".to_string()
     } else if host.contains("cloud.databricks.com") || host.contains("accounts.cloud.databricks") {
         "aws".to_string()
     } else {
-        // Could be GCP or custom, skip for now
+        // Custom or unknown host, skip
         return None;
     };
     
@@ -267,6 +269,7 @@ pub fn get_databricks_profiles_for_cloud(cloud: &str) -> Vec<DatabricksProfile> 
     // Account-level hosts
     let aws_account_host = "accounts.cloud.databricks.com";
     let azure_account_host = "accounts.azuredatabricks.net";
+    let gcp_account_host = "accounts.gcp.databricks.com";
     
     let mut filtered: Vec<DatabricksProfile> = all_profiles
         .into_iter()
@@ -280,6 +283,7 @@ pub fn get_databricks_profiles_for_cloud(cloud: &str) -> Vec<DatabricksProfile> 
             let is_account_level = match cloud {
                 "aws" => p.host.contains(aws_account_host),
                 "azure" => p.host.contains(azure_account_host),
+                "gcp" => p.host.contains(gcp_account_host),
                 _ => false,
             };
             
@@ -292,11 +296,14 @@ pub fn get_databricks_profiles_for_cloud(cloud: &str) -> Vec<DatabricksProfile> 
                 return false;
             }
             
-            // For profiles created by our deployer or with explicit credentials, include them
-            // OAuth profiles may not have token/client_credentials stored in config file
-            // (they use a token cache), so we're lenient here - if it has host + account_id
-            // and is account-level, it's valid. The CLI will use the token cache.
-            // However, we still prefer profiles with explicit credentials
+            // For AWS and GCP, only allow service principal profiles (with client credentials)
+            // SSO/OAuth profiles don't work for newly created workspaces on AWS/GCP
+            // because there's no cached token for the new workspace URL
+            if (cloud == "aws" || cloud == "gcp") && !p.has_client_credentials {
+                return false;
+            }
+            
+            // For Azure, allow all profiles (SSO works due to azure_workspace_resource_id)
             true
         })
         .collect::<Vec<_>>();

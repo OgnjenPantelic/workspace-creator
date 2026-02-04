@@ -14,6 +14,8 @@ import {
   DatabricksProfile,
   UnityCatalogConfig,
   UCPermissionCheck,
+  CloudPermissionCheck,
+  GcpValidation,
 } from "./types";
 import {
   CLOUDS,
@@ -23,6 +25,7 @@ import {
   EXCLUDE_VARIABLES,
   AWS_REGIONS,
   AZURE_REGIONS,
+  GCP_REGIONS,
 } from "./constants";
 import { WelcomeScreen, CloudSelectionScreen, DependenciesScreen } from "./components/screens";
 
@@ -80,6 +83,20 @@ function App() {
   const [azureAuthError, setAzureAuthError] = useState<string | null>(null);
   const [azureLoading, setAzureLoading] = useState(false);
   
+  // GCP credential states
+  const [gcpAuthMode, setGcpAuthMode] = useState<"adc" | "service_account">("adc");
+  const [gcpValidation, setGcpValidation] = useState<GcpValidation | null>(null);
+  const [gcpAuthError, setGcpAuthError] = useState<string | null>(null);
+  const [gcpLoading, setGcpLoading] = useState(false);
+  
+  // Cloud permission check states
+  const [awsPermissionCheck, setAwsPermissionCheck] = useState<CloudPermissionCheck | null>(null);
+  const [azurePermissionCheck, setAzurePermissionCheck] = useState<CloudPermissionCheck | null>(null);
+  const [gcpPermissionCheck, setGcpPermissionCheck] = useState<CloudPermissionCheck | null>(null);
+  const [checkingPermissions, setCheckingPermissions] = useState(false);
+  const [showPermissionWarning, setShowPermissionWarning] = useState(false);
+  const [permissionWarningAcknowledged, setPermissionWarningAcknowledged] = useState(false);
+  
   // Databricks credential states
   const [databricksAuthMode, setDatabricksAuthMode] = useState<"profile" | "credentials">("credentials");
   const [databricksProfiles, setDatabricksProfiles] = useState<DatabricksProfile[]>([]);
@@ -88,6 +105,8 @@ function App() {
   const [databricksLoading, setDatabricksLoading] = useState(false);
   const [databricksLoginAccountId, setDatabricksLoginAccountId] = useState<string>("");
   const [showDatabricksLoginForm, setShowDatabricksLoginForm] = useState(false);
+  const [showAddSpProfileForm, setShowAddSpProfileForm] = useState(false);
+  const [addSpProfileData, setAddSpProfileData] = useState({ accountId: "", clientId: "", clientSecret: "" });
   
   // Deployment tracking states
   const [isRollingBack, setIsRollingBack] = useState(false);
@@ -167,8 +186,10 @@ function App() {
         
         try {
           const region = formValues.region || formValues.location || "";
+          // Ensure cloud field is set correctly from selectedCloud
+          const credsWithCloud = { ...credentials, cloud: selectedCloud };
           const result = await invoke<UCPermissionCheck>("check_uc_permissions", {
-            credentials,
+            credentials: credsWithCloud,
             region,
           });
           setUcPermissionCheck(result);
@@ -641,6 +662,10 @@ function App() {
       case "dependencies":
         setScreen("cloud-selection");
         setSelectedCloud("");
+        // Clear all credentials when going back to cloud selection
+        setCredentials({});
+        setDatabricksProfiles([]);
+        setSelectedDatabricksProfile("");
         break;
       case "databricks-credentials":
         setScreen("dependencies");
@@ -648,6 +673,8 @@ function App() {
         setDatabricksLoginAccountId("");
         setDatabricksLoading(false);
         setShowDatabricksLoginForm(false);
+        setShowAddSpProfileForm(false);
+        setAddSpProfileData({ accountId: "", clientId: "", clientSecret: "" });
         break;
       case "aws-credentials":
         setScreen("databricks-credentials");
@@ -655,11 +682,16 @@ function App() {
       case "azure-credentials":
         setScreen("databricks-credentials");
         break;
+      case "gcp-credentials":
+        setScreen("databricks-credentials");
+        break;
       case "template-selection":
         if (selectedCloud === CLOUDS.AWS) {
           setScreen("aws-credentials");
         } else if (selectedCloud === CLOUDS.AZURE) {
           setScreen("azure-credentials");
+        } else if (selectedCloud === CLOUDS.GCP) {
+          setScreen("gcp-credentials");
         } else {
           setScreen("databricks-credentials");
         }
@@ -698,18 +730,16 @@ function App() {
     try {
       const profiles = await invoke<DatabricksProfile[]>("get_databricks_profiles", { cloud: selectedCloud });
       setDatabricksProfiles(profiles);
-      // If profiles exist, default to profile mode
+      // Always default to profile mode
+      setDatabricksAuthMode("profile");
       if (profiles.length > 0) {
-        setDatabricksAuthMode("profile");
         setSelectedDatabricksProfile(profiles[0].name);
         initialProfile = profiles[0].name;
-      } else {
-        setDatabricksAuthMode("credentials");
       }
     } catch (e) {
       console.error("Failed to get Databricks profiles:", e);
       setDatabricksProfiles([]);
-      setDatabricksAuthMode("credentials");
+      setDatabricksAuthMode("profile");
     }
     
     setScreen("databricks-credentials");
@@ -795,6 +825,53 @@ function App() {
     }
   };
 
+  // Handle adding a service principal as a CLI profile
+  const handleAddSpProfile = async () => {
+    const { accountId, clientId, clientSecret } = addSpProfileData;
+    
+    if (!accountId.trim() || !clientId.trim() || !clientSecret.trim()) {
+      setDatabricksAuthError("All fields are required");
+      return;
+    }
+    
+    setDatabricksLoading(true);
+    setDatabricksAuthError(null);
+    
+    try {
+      // Validate the credentials first
+      await invoke("validate_databricks_credentials", {
+        accountId,
+        clientId,
+        clientSecret,
+        cloud: selectedCloud,
+      });
+      
+      // Create the CLI profile
+      const profileName = await invoke<string>("create_databricks_sp_profile", {
+        cloud: selectedCloud,
+        accountId,
+        clientId,
+        clientSecret,
+      });
+      
+      // Refresh profiles list
+      const profiles = await invoke<DatabricksProfile[]>("get_databricks_profiles", { cloud: selectedCloud });
+      setDatabricksProfiles(profiles);
+      
+      // Select the new profile
+      setSelectedDatabricksProfile(profileName);
+      await loadDatabricksProfileCredentials(profileName);
+      
+      // Close the form and reset
+      setShowAddSpProfileForm(false);
+      setAddSpProfileData({ accountId: "", clientId: "", clientSecret: "" });
+    } catch (e) {
+      setDatabricksAuthError(`Failed to add profile: ${e}`);
+    } finally {
+      setDatabricksLoading(false);
+    }
+  };
+
   // Validate and continue from Databricks credentials
   const validateAndContinueFromCredentials = async () => {
     // Set auth type in credentials
@@ -856,6 +933,9 @@ function App() {
       } else if (selectedCloud === CLOUDS.AZURE) {
         checkAzureAccount();
         setScreen("azure-credentials");
+      } else if (selectedCloud === CLOUDS.GCP) {
+        checkGcpCredentials();
+        setScreen("gcp-credentials");
       } else {
         setScreen("template-selection");
       }
@@ -887,6 +967,41 @@ function App() {
       }
     }
     
+    // Check AWS permissions (soft warning, won't block)
+    setCheckingPermissions(true);
+    try {
+      const permCheck = await invoke<CloudPermissionCheck>("check_aws_permissions", {
+        credentials,
+      });
+      setAwsPermissionCheck(permCheck);
+      
+      if (!permCheck.has_all_permissions && permCheck.missing_permissions.length > 0) {
+        // Show warning dialog but allow user to continue
+        setShowPermissionWarning(true);
+        setPermissionWarningAcknowledged(false);
+        setCheckingPermissions(false);
+        return;
+      }
+    } catch (e) {
+      // Permission check failed - continue anyway (soft failure)
+      console.warn("AWS permission check failed:", e);
+      setAwsPermissionCheck({
+        has_all_permissions: true,
+        checked_permissions: [],
+        missing_permissions: [],
+        message: "Permission check skipped due to an error.",
+        is_warning: true,
+      });
+    }
+    setCheckingPermissions(false);
+    
+    setScreen("template-selection");
+  };
+  
+  // Continue from AWS credentials after acknowledging permission warning
+  const continueFromAwsWithWarning = () => {
+    setShowPermissionWarning(false);
+    setPermissionWarningAcknowledged(false);
     setScreen("template-selection");
   };
 
@@ -924,6 +1039,135 @@ function App() {
       }
     }
     
+    // Check Azure permissions (soft warning, won't block)
+    setCheckingPermissions(true);
+    try {
+      const permCheck = await invoke<CloudPermissionCheck>("check_azure_permissions", {
+        credentials,
+      });
+      setAzurePermissionCheck(permCheck);
+      
+      if (!permCheck.has_all_permissions && permCheck.missing_permissions.length > 0) {
+        // Show warning dialog but allow user to continue
+        setShowPermissionWarning(true);
+        setPermissionWarningAcknowledged(false);
+        setCheckingPermissions(false);
+        return;
+      }
+    } catch (e) {
+      // Permission check failed - continue anyway (soft failure)
+      console.warn("Azure permission check failed:", e);
+      setAzurePermissionCheck({
+        has_all_permissions: true,
+        checked_permissions: [],
+        missing_permissions: [],
+        message: "Permission check skipped due to an error.",
+        is_warning: true,
+      });
+    }
+    setCheckingPermissions(false);
+    
+    setScreen("template-selection");
+  };
+  
+  // Continue from Azure credentials after acknowledging permission warning
+  const continueFromAzureWithWarning = () => {
+    setShowPermissionWarning(false);
+    setPermissionWarningAcknowledged(false);
+    setScreen("template-selection");
+  };
+
+  // GCP helper functions
+  const checkGcpCredentials = async () => {
+    setGcpLoading(true);
+    setGcpAuthError(null);
+    setGcpValidation(null);
+    try {
+      const validation = await invoke<GcpValidation>("validate_gcp_credentials", {
+        credentials: {
+          ...credentials,
+          gcp_use_adc: gcpAuthMode === "adc",
+        },
+      });
+      setGcpValidation(validation);
+      if (validation.valid && validation.project_id) {
+        setCredentials(prev => ({
+          ...prev,
+          gcp_project_id: validation.project_id || prev.gcp_project_id,
+        }));
+      }
+    } catch (e: any) {
+      setGcpAuthError(e.toString());
+    } finally {
+      setGcpLoading(false);
+    }
+  };
+
+  // Validate and continue from GCP credentials
+  const validateAndContinueFromGcpCredentials = async () => {
+    setGcpAuthError(null);
+    
+    if (gcpAuthMode === "adc") {
+      // For ADC mode, check if we have valid credentials
+      if (!gcpValidation?.valid) {
+        setGcpAuthError("Please verify your GCP credentials first");
+        return;
+      }
+      if (!credentials.gcp_project_id?.trim()) {
+        setGcpAuthError("GCP Project ID is required");
+        return;
+      }
+    } else {
+      // For service account mode, validate required fields
+      if (!credentials.gcp_project_id?.trim()) {
+        setGcpAuthError("GCP Project ID is required");
+        return;
+      }
+      if (!credentials.gcp_credentials_json?.trim()) {
+        setGcpAuthError("Service Account JSON is required");
+        return;
+      }
+    }
+    
+    // Check GCP permissions (soft warning, won't block)
+    setCheckingPermissions(true);
+    try {
+      const permCheck = await invoke<CloudPermissionCheck>("check_gcp_permissions", {
+        credentials: {
+          ...credentials,
+          gcp_use_adc: gcpAuthMode === "adc",
+          cloud: "gcp",
+        },
+      });
+      setGcpPermissionCheck(permCheck);
+      
+      if (!permCheck.has_all_permissions && permCheck.missing_permissions.length > 0) {
+        // Show warning dialog but allow user to continue
+        setShowPermissionWarning(true);
+        setPermissionWarningAcknowledged(false);
+        setCheckingPermissions(false);
+        return;
+      }
+    } catch (e) {
+      // Permission check failed - continue anyway (soft failure)
+      console.warn("GCP permission check failed:", e);
+      setGcpPermissionCheck({
+        has_all_permissions: true,
+        checked_permissions: [],
+        missing_permissions: [],
+        message: "Permission check skipped due to an error.",
+        is_warning: true,
+      });
+    }
+    setCheckingPermissions(false);
+    
+    setScreen("template-selection");
+  };
+  
+  // Continue from GCP credentials after acknowledging permission warning
+  const continueFromGcpWithWarning = () => {
+    setShowPermissionWarning(false);
+    setPermissionWarningAcknowledged(false);
     setScreen("template-selection");
   };
 
@@ -944,9 +1188,9 @@ function App() {
         <button className="back-btn" onClick={goBack}>
           ← Back
         </button>
-        <h1>Databricks Account Credentials</h1>
+        <h1>Databricks Credentials</h1>
         <p className="subtitle">
-          Configure your Databricks account credentials. A service principal with account admin privileges is required.
+          Configure your Databricks credentials for deploying resources. A service principal with account admin privileges is required.
         </p>
 
         {error && <div className="alert alert-error">{error}</div>}
@@ -956,57 +1200,74 @@ function App() {
           <h3>Authentication Method</h3>
           
           <div className="auth-mode-selector">
-            {(databricksCli?.installed || databricksProfiles.length > 0) && (
-              <label className="radio-label">
-                <input
-                  type="radio"
-                  checked={databricksAuthMode === "profile"}
-                  onChange={() => setDatabricksAuthMode("profile")}
-                />
-                Use Databricks CLI Profile
-              </label>
-            )}
+            <label className="radio-label">
+              <input
+                type="radio"
+                checked={databricksAuthMode === "profile"}
+                onChange={() => setDatabricksAuthMode("profile")}
+              />
+              Use Databricks CLI Profile (recommended)
+            </label>
             <label className="radio-label">
               <input
                 type="radio"
                 checked={databricksAuthMode === "credentials"}
                 onChange={() => setDatabricksAuthMode("credentials")}
               />
-              Enter Credentials Manually
+              Use Service Principal Credentials
             </label>
           </div>
 
           {databricksAuthMode === "profile" && (
             <>
-              {/* Show existing profiles dropdown if we have profiles AND not in login mode */}
-              {showExistingProfiles && !showDatabricksLoginForm && (
+              {/* Main profile selection view - show when not in add/login forms */}
+              {!showDatabricksLoginForm && !showAddSpProfileForm && (
                 <>
-                  <div className="form-group" style={{ marginTop: "16px" }}>
-                    <label>Select Existing Profile</label>
-                    <select
-                      value={selectedDatabricksProfile}
-                      onChange={(e) => {
-                        setSelectedDatabricksProfile(e.target.value);
-                        loadDatabricksProfileCredentials(e.target.value);
-                      }}
-                    >
-                      {databricksProfiles.map((profile) => (
-                        <option key={profile.name} value={profile.name}>
-                          {profile.name} ({profile.has_client_credentials ? "Service Principal" : "Token"})
-                        </option>
-                      ))}
-                    </select>
-                    <div className="help-text">
-                      Account-level profiles for {selectedCloud === CLOUDS.AZURE ? "Azure" : "AWS"} Databricks
+                  {/* AWS/GCP warning about SP-only profiles */}
+                  {(selectedCloud === CLOUDS.AWS || selectedCloud === CLOUDS.GCP) && (
+                    <div className="alert alert-info" style={{ marginTop: "16px", fontSize: "13px" }}>
+                      <strong>Note:</strong> Only service principal profiles are supported for {selectedCloud === CLOUDS.AWS ? "AWS" : "GCP"}. 
+                      SSO profiles authenticate per-workspace and cannot automatically access newly created workspaces using the account-level profile.
                     </div>
-                  </div>
+                  )}
                   
-                  {databricksCli?.installed && (
-                    <div style={{ marginTop: "16px", paddingTop: "16px", borderTop: "1px solid #333" }}>
+                  {/* Show existing profiles dropdown if we have profiles */}
+                  {showExistingProfiles ? (
+                    <div className="form-group" style={{ marginTop: "16px" }}>
+                      <label>Select Existing Profile</label>
+                      <select
+                        value={selectedDatabricksProfile}
+                        onChange={(e) => {
+                          setSelectedDatabricksProfile(e.target.value);
+                          loadDatabricksProfileCredentials(e.target.value);
+                        }}
+                      >
+                        {databricksProfiles.map((profile) => (
+                          <option key={profile.name} value={profile.name}>
+                            {profile.name} ({profile.has_client_credentials ? "Service Principal" : "Token"})
+                          </option>
+                        ))}
+                      </select>
+                      <div className="help-text">
+                        Account-level profiles for {selectedCloud === CLOUDS.AZURE ? "Azure" : selectedCloud === CLOUDS.GCP ? "GCP" : "AWS"} Databricks
+                      </div>
+                    </div>
+                  ) : (
+                    <div style={{ marginTop: "16px", padding: "16px", background: "#1e1e20", borderRadius: "8px" }}>
+                      <p style={{ margin: 0, color: "#aaa" }}>
+                        No CLI profiles found. Add a service principal as a profile{selectedCloud === CLOUDS.AZURE && databricksCli?.installed ? " or login with SSO" : ""} to get started.
+                      </p>
+                    </div>
+                  )}
+                  
+                  <div style={{ marginTop: "16px", paddingTop: "16px", borderTop: "1px solid #333", display: "flex", gap: "12px" }}>
+                    {/* SSO login option - only for Azure, not AWS or GCP */}
+                    {databricksCli?.installed && selectedCloud === CLOUDS.AZURE && (
                       <button 
                         className="btn btn-secondary btn-small"
                         onClick={() => {
                           setShowDatabricksLoginForm(true);
+                          setShowAddSpProfileForm(false);
                           setSelectedDatabricksProfile("");
                           setCredentials(prev => ({
                             ...prev,
@@ -1017,39 +1278,45 @@ function App() {
                         }}
                         style={{ fontSize: "13px", padding: "8px 16px" }}
                       >
-                        + Login with Different Account
+                        + Login with SSO
                       </button>
-                    </div>
-                  )}
+                    )}
+                    {/* Add SP profile option - available for all clouds */}
+                    <button 
+                      className="btn btn-secondary btn-small"
+                      onClick={() => {
+                        setShowAddSpProfileForm(true);
+                        setShowDatabricksLoginForm(false);
+                        setSelectedDatabricksProfile("");
+                        setAddSpProfileData({ accountId: "", clientId: "", clientSecret: "" });
+                      }}
+                      style={{ fontSize: "13px", padding: "8px 16px" }}
+                    >
+                      + Add service principal as profile
+                    </button>
+                  </div>
                 </>
               )}
               
-              {/* Show login form if no profiles OR user clicked "Login with Different Account" */}
-              {((!showExistingProfiles || showDatabricksLoginForm) && databricksCli?.installed) && (
+              {/* Show SSO login form when user clicked "Login with SSO" - Azure only */}
+              {showDatabricksLoginForm && databricksCli?.installed && selectedCloud !== CLOUDS.AWS && (
                 <div style={{ marginTop: "16px", padding: "20px", background: "#1e1e20", borderRadius: "8px" }}>
-                  {showDatabricksLoginForm && showExistingProfiles && (
-                    <div style={{ marginBottom: "16px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                      <span style={{ color: "#aaa" }}>Login with a different Databricks account:</span>
-                      <button 
-                        className="btn btn-secondary btn-small"
-                        onClick={() => {
-                          setShowDatabricksLoginForm(false);
-                          if (databricksProfiles.length > 0) {
-                            setSelectedDatabricksProfile(databricksProfiles[0].name);
-                            loadDatabricksProfileCredentials(databricksProfiles[0].name);
-                          }
-                        }}
-                        style={{ fontSize: "12px", padding: "4px 12px" }}
-                      >
-                        ← Back to Profiles
-                      </button>
-                    </div>
-                  )}
-                  {!showDatabricksLoginForm && (
-                    <p style={{ margin: "0 0 16px 0", color: "#aaa" }}>
-                      No existing profiles found. Login to create one:
-                    </p>
-                  )}
+                  <div style={{ marginBottom: "16px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <span style={{ color: "#aaa" }}>Login with a different Databricks account:</span>
+                    <button 
+                      className="btn btn-secondary btn-small"
+                      onClick={() => {
+                        setShowDatabricksLoginForm(false);
+                        if (databricksProfiles.length > 0) {
+                          setSelectedDatabricksProfile(databricksProfiles[0].name);
+                          loadDatabricksProfileCredentials(databricksProfiles[0].name);
+                        }
+                      }}
+                      style={{ fontSize: "12px", padding: "4px 12px" }}
+                    >
+                      ← Back to Profiles
+                    </button>
+                  </div>
                   <div style={{ display: "flex", gap: "12px", alignItems: "flex-end" }}>
                     <div className="form-group" style={{ flex: 1, marginBottom: 0 }}>
                       <label>Account ID</label>
@@ -1084,6 +1351,82 @@ function App() {
                   </div>
                 </div>
               )}
+
+              {/* Add Service Principal Profile Form */}
+              {showAddSpProfileForm && databricksAuthMode === "profile" && (
+                <div style={{ marginTop: "16px", padding: "20px", background: "#1e1e20", borderRadius: "8px" }}>
+                  <div style={{ marginBottom: "16px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <span style={{ color: "#aaa" }}>Add a service principal as a CLI profile:</span>
+                    <button 
+                      className="btn btn-secondary btn-small"
+                      onClick={() => {
+                        setShowAddSpProfileForm(false);
+                        setAddSpProfileData({ accountId: "", clientId: "", clientSecret: "" });
+                        if (databricksProfiles.length > 0) {
+                          setSelectedDatabricksProfile(databricksProfiles[0].name);
+                          loadDatabricksProfileCredentials(databricksProfiles[0].name);
+                        }
+                      }}
+                      style={{ fontSize: "12px", padding: "4px 12px" }}
+                    >
+                      ← Back to Profiles
+                    </button>
+                  </div>
+                  <div className="form-group" style={{ marginBottom: "12px" }}>
+                    <label>Account ID</label>
+                    <input
+                      type="text"
+                      autoCapitalize="none"
+                      autoCorrect="off"
+                      spellCheck={false}
+                      value={addSpProfileData.accountId}
+                      onChange={(e) => setAddSpProfileData(prev => ({ ...prev, accountId: e.target.value }))}
+                      placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+                    />
+                  </div>
+                  <div className="form-group" style={{ marginBottom: "12px" }}>
+                    <label>Client ID</label>
+                    <input
+                      type="text"
+                      autoCapitalize="none"
+                      autoCorrect="off"
+                      spellCheck={false}
+                      value={addSpProfileData.clientId}
+                      onChange={(e) => setAddSpProfileData(prev => ({ ...prev, clientId: e.target.value }))}
+                      placeholder="Service Principal Client ID"
+                    />
+                  </div>
+                  <div className="form-group" style={{ marginBottom: "16px" }}>
+                    <label>Client Secret</label>
+                    <input
+                      type="password"
+                      autoCapitalize="none"
+                      autoCorrect="off"
+                      spellCheck={false}
+                      value={addSpProfileData.clientSecret}
+                      onChange={(e) => setAddSpProfileData(prev => ({ ...prev, clientSecret: e.target.value }))}
+                      placeholder="Service Principal Client Secret"
+                    />
+                  </div>
+                  <button 
+                    className="btn" 
+                    onClick={handleAddSpProfile}
+                    disabled={databricksLoading || !addSpProfileData.accountId.trim() || !addSpProfileData.clientId.trim() || !addSpProfileData.clientSecret.trim()}
+                  >
+                    {databricksLoading ? (
+                      <>
+                        <span className="spinner" />
+                        Adding Profile...
+                      </>
+                    ) : (
+                      "Add Profile"
+                    )}
+                  </button>
+                  <div className="help-text" style={{ marginTop: "8px" }}>
+                    Creates a new profile in ~/.databrickscfg with the service principal credentials.
+                  </div>
+                </div>
+              )}
               
               {/* Show warning if CLI not installed and no profiles */}
               {!databricksCli?.installed && !showExistingProfiles && (
@@ -1103,7 +1446,7 @@ function App() {
               <p style={{ color: "#888", marginBottom: "20px", marginTop: "16px" }}>
                 You can find these credentials in your{" "}
                 <a 
-                  href={selectedCloud === CLOUDS.AZURE ? "https://accounts.azuredatabricks.net" : "https://accounts.cloud.databricks.com"} 
+                  href={selectedCloud === CLOUDS.AZURE ? "https://accounts.azuredatabricks.net" : selectedCloud === CLOUDS.GCP ? "https://accounts.gcp.databricks.com" : "https://accounts.cloud.databricks.com"} 
                   target="_blank" 
                   style={{ color: "#ff6b35" }}
                 >
@@ -1212,7 +1555,11 @@ function App() {
               <input
                 type="radio"
                 checked={awsAuthMode === "profile"}
-                onChange={() => setAwsAuthMode("profile")}
+                onChange={() => {
+                  setAwsAuthMode("profile");
+                  setShowPermissionWarning(false);
+                  setPermissionWarningAcknowledged(false);
+                }}
               />
               Use AWS CLI Profile (recommended)
             </label>
@@ -1220,9 +1567,13 @@ function App() {
               <input
                 type="radio"
                 checked={awsAuthMode === "keys"}
-                onChange={() => setAwsAuthMode("keys")}
+                onChange={() => {
+                  setAwsAuthMode("keys");
+                  setShowPermissionWarning(false);
+                  setPermissionWarningAcknowledged(false);
+                }}
               />
-              Use Access Keys
+              Use Access Key Credentials
             </label>
           </div>
 
@@ -1361,13 +1712,52 @@ function App() {
           )}
         </div>
 
+        {/* Permission Warning Dialog */}
+        {showPermissionWarning && awsPermissionCheck && !awsPermissionCheck.has_all_permissions && (
+          <div className="alert alert-warning" style={{ marginTop: "24px" }}>
+            <h3 style={{ margin: "0 0 12px 0", fontSize: "16px" }}>Permission Check Warning</h3>
+            <p style={{ margin: "0 0 12px 0" }}>
+              Some required AWS permissions could not be verified:
+            </p>
+            <ul style={{ margin: "0 0 12px 0", paddingLeft: "20px", fontSize: "13px" }}>
+              {awsPermissionCheck.missing_permissions.slice(0, 5).map((p) => (
+                <li key={p}><code>{p}</code></li>
+              ))}
+              {awsPermissionCheck.missing_permissions.length > 5 && (
+                <li style={{ color: "#888" }}>...and {awsPermissionCheck.missing_permissions.length - 5} more</li>
+              )}
+            </ul>
+            <p style={{ margin: "0 0 16px 0", fontSize: "12px", color: "#888" }}>
+              This might be a false positive if you have custom IAM policies, 
+              permissions through assumed roles, or resource-level restrictions.
+              The deployment may still succeed.
+            </p>
+            <label className="radio-label" style={{ display: "flex", alignItems: "center", margin: "0" }}>
+              <input
+                type="checkbox"
+                checked={permissionWarningAcknowledged}
+                onChange={(e) => setPermissionWarningAcknowledged(e.target.checked)}
+                style={{ marginRight: "8px" }}
+              />
+              I understand the risks and want to continue anyway
+            </label>
+          </div>
+        )}
+
         <div style={{ marginTop: "32px" }}>
           <button 
             className="btn" 
-            onClick={validateAndContinueFromAwsCredentials} 
-            disabled={!canContinue}
+            onClick={showPermissionWarning ? continueFromAwsWithWarning : validateAndContinueFromAwsCredentials} 
+            disabled={!canContinue || checkingPermissions || (showPermissionWarning && !permissionWarningAcknowledged)}
           >
-            Continue →
+            {checkingPermissions ? (
+              <>
+                <span className="spinner" />
+                Validating...
+              </>
+            ) : (
+              "Validate & Continue →"
+            )}
           </button>
         </div>
       </div>
@@ -1400,7 +1790,11 @@ function App() {
               <input
                 type="radio"
                 checked={azureAuthMode === "cli"}
-                onChange={() => setAzureAuthMode("cli")}
+                onChange={() => {
+                  setAzureAuthMode("cli");
+                  setShowPermissionWarning(false);
+                  setPermissionWarningAcknowledged(false);
+                }}
               />
               Use Azure CLI (recommended)
             </label>
@@ -1408,9 +1802,13 @@ function App() {
               <input
                 type="radio"
                 checked={azureAuthMode === "service_principal"}
-                onChange={() => setAzureAuthMode("service_principal")}
+                onChange={() => {
+                  setAzureAuthMode("service_principal");
+                  setShowPermissionWarning(false);
+                  setPermissionWarningAcknowledged(false);
+                }}
               />
-              Use Service Principal
+              Use Service Principal Credentials
             </label>
           </div>
 
@@ -1547,13 +1945,261 @@ function App() {
           )}
         </div>
 
+        {/* Permission Warning Dialog */}
+        {showPermissionWarning && azurePermissionCheck && !azurePermissionCheck.has_all_permissions && (
+          <div className="alert alert-warning" style={{ marginTop: "24px" }}>
+            <h3 style={{ margin: "0 0 12px 0", fontSize: "16px" }}>Permission Check Warning</h3>
+            <p style={{ margin: "0 0 12px 0" }}>
+              Some required Azure roles could not be verified:
+            </p>
+            <ul style={{ margin: "0 0 12px 0", paddingLeft: "20px", fontSize: "13px" }}>
+              {azurePermissionCheck.missing_permissions.map((p) => (
+                <li key={p}><code>{p}</code></li>
+              ))}
+            </ul>
+            <p style={{ margin: "0 0 16px 0", fontSize: "12px", color: "#888" }}>
+              This might be a false positive if you have custom roles, 
+              inherited permissions, or PIM-eligible roles.
+              The deployment may still succeed.
+            </p>
+            <label className="radio-label" style={{ display: "flex", alignItems: "center", margin: "0" }}>
+              <input
+                type="checkbox"
+                checked={permissionWarningAcknowledged}
+                onChange={(e) => setPermissionWarningAcknowledged(e.target.checked)}
+                style={{ marginRight: "8px" }}
+              />
+              I understand the risks and want to continue anyway
+            </label>
+          </div>
+        )}
+
         <div style={{ marginTop: "32px" }}>
           <button 
             className="btn" 
-            onClick={validateAndContinueFromAzureCredentials} 
-            disabled={!canContinue}
+            onClick={showPermissionWarning ? continueFromAzureWithWarning : validateAndContinueFromAzureCredentials} 
+            disabled={!canContinue || checkingPermissions || (showPermissionWarning && !permissionWarningAcknowledged)}
           >
-            Continue →
+            {checkingPermissions ? (
+              <>
+                <span className="spinner" />
+                Validating...
+              </>
+            ) : (
+              "Validate & Continue →"
+            )}
+          </button>
+        </div>
+      </div>
+    );
+  };
+
+  const renderGcpCredentials = () => {
+    const canContinue = gcpAuthMode === "adc" 
+      ? !!(gcpValidation?.valid && credentials.gcp_project_id?.trim()) 
+      : !!(credentials.gcp_project_id?.trim() && credentials.gcp_credentials_json?.trim());
+
+    return (
+      <div className="container">
+        <button className="back-btn" onClick={goBack}>
+          ← Back
+        </button>
+        <h1>GCP Credentials</h1>
+        <p className="subtitle">
+          Configure your Google Cloud credentials for deploying resources.
+        </p>
+
+        {gcpAuthError && <div className="alert alert-error">{gcpAuthError}</div>}
+
+        <div className="form-section">
+          <h3>Authentication Method</h3>
+          
+          <div className="auth-mode-selector">
+            <label className="radio-label">
+              <input
+                type="radio"
+                checked={gcpAuthMode === "adc"}
+                onChange={() => {
+                  setGcpAuthMode("adc");
+                  setShowPermissionWarning(false);
+                  setPermissionWarningAcknowledged(false);
+                }}
+              />
+              Use Application Default Credentials (recommended)
+            </label>
+            <label className="radio-label">
+              <input
+                type="radio"
+                checked={gcpAuthMode === "service_account"}
+                onChange={() => {
+                  setGcpAuthMode("service_account");
+                  setShowPermissionWarning(false);
+                  setPermissionWarningAcknowledged(false);
+                }}
+              />
+              Use Service Account Key
+            </label>
+          </div>
+
+          {gcpAuthMode === "adc" && (
+            <>
+              <div className="help-text" style={{ marginBottom: "16px" }}>
+                Application Default Credentials are managed via <code>gcloud auth application-default login</code>.{" "}
+                <a href="https://cloud.google.com/docs/authentication/provide-credentials-adc" target="_blank" style={{ color: "#ff6b35" }}>
+                  Learn more
+                </a>
+              </div>
+              
+              <div className="form-group">
+                <label>Status</label>
+                <div className="aws-status">
+                  {gcpLoading && <span className="spinner" />}
+                  {gcpValidation?.valid && (
+                    <span className="success">
+                      Authenticated {gcpValidation.account ? `as: ${gcpValidation.account}` : ""}
+                    </span>
+                  )}
+                  {gcpAuthError && !gcpLoading && !gcpValidation?.valid && (
+                    <span className="error">{gcpAuthError}</span>
+                  )}
+                  {!gcpValidation?.valid && !gcpAuthError && !gcpLoading && (
+                    <span style={{ color: "#888" }}>Click Verify to check credentials</span>
+                  )}
+                </div>
+                <div style={{ marginTop: "8px", display: "flex", gap: "8px" }}>
+                  <button
+                    type="button"
+                    className="btn btn-small btn-secondary"
+                    onClick={checkGcpCredentials}
+                    disabled={gcpLoading}
+                  >
+                    {gcpLoading ? "Verifying..." : "Verify Credentials"}
+                  </button>
+                </div>
+              </div>
+
+              <div className="form-group" style={{ marginTop: "16px" }}>
+                <label>Project ID *</label>
+                <input
+                  type="text"
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  spellCheck={false}
+                  value={credentials.gcp_project_id || ""}
+                  onChange={(e) => handleCredentialChange("gcp_project_id", e.target.value)}
+                  placeholder="my-gcp-project"
+                />
+                <div className="help-text">
+                  The GCP project where resources will be deployed.
+                  {gcpValidation?.project_id && !credentials.gcp_project_id && (
+                    <span> (Detected: {gcpValidation.project_id})</span>
+                  )}
+                </div>
+              </div>
+
+              {gcpValidation?.valid && (
+                <div className="alert alert-success" style={{ marginTop: "16px" }}>
+                  {gcpValidation.message}
+                </div>
+              )}
+            </>
+          )}
+
+          {gcpAuthMode === "service_account" && (
+            <>
+              <div className="alert alert-warning" style={{ marginBottom: "16px" }}>
+                Service account keys should be kept secure and rotated regularly.
+              </div>
+              
+              <div className="form-group">
+                <label>Project ID *</label>
+                <input
+                  type="text"
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  spellCheck={false}
+                  value={credentials.gcp_project_id || ""}
+                  onChange={(e) => handleCredentialChange("gcp_project_id", e.target.value)}
+                  placeholder="my-gcp-project"
+                />
+                <div className="help-text">The GCP project where resources will be deployed</div>
+              </div>
+              
+              <div className="form-group">
+                <label>Service Account Key JSON *</label>
+                <textarea
+                  value={credentials.gcp_credentials_json || ""}
+                  onChange={(e) => {
+                    handleCredentialChange("gcp_credentials_json", e.target.value);
+                    // Try to auto-detect project_id from JSON
+                    try {
+                      const parsed = JSON.parse(e.target.value);
+                      if (parsed.project_id && !credentials.gcp_project_id) {
+                        handleCredentialChange("gcp_project_id", parsed.project_id);
+                      }
+                    } catch {
+                      // Ignore parse errors
+                    }
+                  }}
+                  placeholder='Paste your service account JSON key here...
+{
+  "type": "service_account",
+  "project_id": "...",
+  ...
+}'
+                  rows={8}
+                  style={{ fontFamily: "monospace", fontSize: "12px" }}
+                />
+                <div className="help-text">
+                  Download from Google Cloud Console → IAM & Admin → Service Accounts → Keys
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* Permission Warning Dialog */}
+        {showPermissionWarning && gcpPermissionCheck && !gcpPermissionCheck.has_all_permissions && (
+          <div className="alert alert-warning" style={{ marginTop: "24px" }}>
+            <h3 style={{ margin: "0 0 12px 0", fontSize: "16px" }}>Permission Check Warning</h3>
+            <p style={{ margin: "0 0 12px 0" }}>
+              Some required GCP permissions could not be verified:
+            </p>
+            <ul style={{ margin: "0 0 12px 0", paddingLeft: "20px", fontSize: "13px" }}>
+              {gcpPermissionCheck.missing_permissions.map((p) => (
+                <li key={p}><code>{p}</code></li>
+              ))}
+            </ul>
+            <p style={{ margin: "0 0 16px 0", fontSize: "12px", color: "#888" }}>
+              This might be a false positive if you have custom roles or inherited permissions.
+              The deployment may still succeed.
+            </p>
+            <label className="radio-label" style={{ display: "flex", alignItems: "center", margin: "0" }}>
+              <input
+                type="checkbox"
+                checked={permissionWarningAcknowledged}
+                onChange={(e) => setPermissionWarningAcknowledged(e.target.checked)}
+                style={{ marginRight: "8px" }}
+              />
+              I understand the risks and want to continue anyway
+            </label>
+          </div>
+        )}
+
+        <div style={{ marginTop: "32px" }}>
+          <button 
+            className="btn" 
+            onClick={showPermissionWarning ? continueFromGcpWithWarning : validateAndContinueFromGcpCredentials} 
+            disabled={!canContinue || checkingPermissions || (showPermissionWarning && !permissionWarningAcknowledged)}
+          >
+            {checkingPermissions ? (
+              <>
+                <span className="spinner" />
+                Validating...
+              </>
+            ) : (
+              "Validate & Continue →"
+            )}
           </button>
         </div>
       </div>
@@ -1574,33 +2220,48 @@ function App() {
         </p>
 
         <div className="templates">
-          {cloudTemplates.map((template) => (
-            <div
-              key={template.id}
-              className="template-card"
-              onClick={() => selectTemplate(template)}
-            >
-              <div className="template-title">{template.name}</div>
-              <div className="template-description">{template.description}</div>
-              <div className="template-features">
-                <ul>
-                  {template.features.map((feature, i) => (
-                    <li key={i}>{feature}</li>
-                  ))}
-                </ul>
+          {cloudTemplates.length === 0 ? (
+            // No templates available for this cloud yet
+            <div className="template-card" style={{ opacity: 0.6, cursor: "not-allowed" }}>
+              <div className="coming-soon">Coming Soon</div>
+              <div className="template-title">
+                {selectedCloud === CLOUDS.GCP ? "GCP Standard Workspace" : "Standard Workspace"}
+              </div>
+              <div className="template-description">
+                Templates for this cloud provider are not yet available.
               </div>
             </div>
-          ))}
+          ) : (
+            <>
+              {cloudTemplates.map((template) => (
+                <div
+                  key={template.id}
+                  className="template-card"
+                  onClick={() => selectTemplate(template)}
+                >
+                  <div className="template-title">{template.name}</div>
+                  <div className="template-description">{template.description}</div>
+                  <div className="template-features">
+                    <ul>
+                      {template.features.map((feature, i) => (
+                        <li key={i}>{feature}</li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+              ))}
 
-          <div className="template-card" style={{ opacity: 0.6, cursor: "not-allowed" }}>
-            <div className="coming-soon">Coming Soon</div>
-            <div className="template-title">
-              Maximum Security {selectedCloud === CLOUDS.AWS ? "PrivateLink" : ""} Workspace
-            </div>
-            <div className="template-description">
-              Enterprise-grade security with {selectedCloud === CLOUDS.AWS ? "AWS PrivateLink" : "Private Link"} and zero internet exposure
-            </div>
-          </div>
+              <div className="template-card" style={{ opacity: 0.6, cursor: "not-allowed" }}>
+                <div className="coming-soon">Coming Soon</div>
+                <div className="template-title">
+                  Maximum Security {selectedCloud === CLOUDS.AWS ? "PrivateLink" : ""} Workspace
+                </div>
+                <div className="template-description">
+                  Enterprise-grade security with {selectedCloud === CLOUDS.AWS ? "AWS PrivateLink" : "Private Link"} and zero internet exposure
+                </div>
+              </div>
+            </>
+          )}
         </div>
       </div>
     );
@@ -2197,8 +2858,10 @@ function App() {
     
     try {
       const region = formValues.region || formValues.location || "";
+      // Ensure cloud field is set correctly from selectedCloud
+      const credsWithCloud = { ...credentials, cloud: selectedCloud };
       const result = await invoke<UCPermissionCheck>("check_uc_permissions", {
-        credentials,
+        credentials: credsWithCloud,
         region,
       });
       setUcPermissionCheck(result);
@@ -2810,6 +3473,8 @@ function App() {
       return renderAwsCredentials();
     case "azure-credentials":
       return renderAzureCredentials();
+    case "gcp-credentials":
+      return renderGcpCredentials();
     case "template-selection":
       return renderTemplateSelection();
     case "configuration":

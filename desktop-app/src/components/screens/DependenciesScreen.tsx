@@ -111,10 +111,10 @@ const DependenciesScreen: React.FC<DependenciesScreenProps> = ({
               {!cloudCliDep?.installed && (
                 <div className="dependency-note">
                   {selectedCloud === CLOUDS.AWS 
-                    ? "Enables profile-based auth and SSO"
+                    ? "Enables profile-based authentication and SSO"
                     : selectedCloud === CLOUDS.AZURE 
-                      ? "Enables interactive login"
-                      : "Enables interactive login"}
+                      ? "Enables interactive login and profile-based authentication"
+                      : "Enables interactive login and profile-based authentication"}
                 </div>
               )}
             </div>
@@ -165,8 +165,17 @@ const DependenciesScreen: React.FC<DependenciesScreenProps> = ({
       )}
 
       <div className="alert alert-info">
-        {cloudCliName} is optional. If installed, credentials will be auto-detected.
-        Otherwise, you can enter them manually in the next steps.
+        <strong>Optional tools:</strong>
+        <ul style={{ margin: "8px 0 0 0", paddingLeft: "20px", fontSize: "14px" }}>
+          <li>
+            <strong>{cloudCliName}</strong>: If installed, credentials will be auto-detected. 
+            Otherwise, you can enter them manually in the next steps.
+          </li>
+          <li>
+            <strong>Databricks CLI</strong>: If installed, enables profile-based OAuth authentication. 
+            Otherwise, you can use service principal credentials.
+          </li>
+        </ul>
       </div>
 
       <div style={{ marginTop: "32px" }}>

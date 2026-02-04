@@ -40,6 +40,22 @@ resource "databricks_mws_permission_assignment" "workspace_access" {
   ]
 }
 
+# Add Databricks SP to workspace (required for SP auth to work at workspace level)
+# Only needed when using oauth-m2m authentication
+data "databricks_service_principal" "deployer" {
+  count          = var.databricks_auth_type == "oauth-m2m" ? 1 : 0
+  provider       = databricks.accounts
+  application_id = var.databricks_client_id
+}
+
+resource "databricks_mws_permission_assignment" "sp_workspace_access" {
+  count        = var.databricks_auth_type == "oauth-m2m" ? 1 : 0
+  provider     = databricks.accounts
+  workspace_id = azurerm_databricks_workspace.this.workspace_id
+  principal_id = data.databricks_service_principal.deployer[0].id
+  permissions  = ["ADMIN"]
+}
+
 # Metastore configuration
 # Automatically detects existing metastore in the region or creates a new one
 # If existing_metastore_id is explicitly provided, uses that instead
