@@ -147,11 +147,52 @@ export const AZURE_REGIONS: { value: string; label: string }[] = [
   { value: "uaenorth", label: "UAE North" },
 ];
 
-// Variables to exclude from the configuration form (collected in credentials screens)
+// Databricks supported GCP regions
+export const GCP_REGIONS: { value: string; label: string }[] = [
+  // North America
+  { value: "us-central1", label: "US Central (Iowa)" },
+  { value: "us-east1", label: "US East (South Carolina)" },
+  { value: "us-east4", label: "US East (N. Virginia)" },
+  { value: "us-west1", label: "US West (Oregon)" },
+  { value: "us-west2", label: "US West (Los Angeles)" },
+  { value: "us-west3", label: "US West (Salt Lake City)" },
+  { value: "us-west4", label: "US West (Las Vegas)" },
+  { value: "northamerica-northeast1", label: "Canada (Montreal)" },
+  { value: "northamerica-northeast2", label: "Canada (Toronto)" },
+  // South America
+  { value: "southamerica-east1", label: "South America (São Paulo)" },
+  { value: "southamerica-west1", label: "South America (Santiago)" },
+  // Europe
+  { value: "europe-west1", label: "Europe (Belgium)" },
+  { value: "europe-west2", label: "Europe (London)" },
+  { value: "europe-west3", label: "Europe (Frankfurt)" },
+  { value: "europe-west4", label: "Europe (Netherlands)" },
+  { value: "europe-west6", label: "Europe (Zurich)" },
+  { value: "europe-west9", label: "Europe (Paris)" },
+  { value: "europe-north1", label: "Europe (Finland)" },
+  { value: "europe-central2", label: "Europe (Warsaw)" },
+  // Asia Pacific
+  { value: "asia-east1", label: "Asia (Taiwan)" },
+  { value: "asia-east2", label: "Asia (Hong Kong)" },
+  { value: "asia-northeast1", label: "Asia (Tokyo)" },
+  { value: "asia-northeast2", label: "Asia (Osaka)" },
+  { value: "asia-northeast3", label: "Asia (Seoul)" },
+  { value: "asia-south1", label: "Asia (Mumbai)" },
+  { value: "asia-south2", label: "Asia (Delhi)" },
+  { value: "asia-southeast1", label: "Asia (Singapore)" },
+  { value: "asia-southeast2", label: "Asia (Jakarta)" },
+  // Australia
+  { value: "australia-southeast1", label: "Australia (Sydney)" },
+  { value: "australia-southeast2", label: "Australia (Melbourne)" },
+];
+
+// Variables to exclude from the configuration form (collected in credentials screens or auto-detected)
 export const EXCLUDE_VARIABLES = [
   "databricks_account_id",
   "databricks_client_id",
   "databricks_client_secret",
+  "databricks_profile",
+  "databricks_auth_type",
   "aws_access_key_id",
   "aws_secret_access_key",
   "aws_session_token",
@@ -161,4 +202,15 @@ export const EXCLUDE_VARIABLES = [
   "azure_client_id",
   "azure_client_secret",
   "create_new_resource_group",
+  // GCP variables
+  "gcp_project_id",
+  "google_project",
+  "gcp_credentials_json",
+  // Unity Catalog variables - configured in dedicated UC setup screen
+  "existing_metastore_id",
+  "create_unity_catalog",
+  "uc_catalog_name",
+  "uc_storage_name",
+  "uc_force_destroy",
+  "databricks_auth_type",
 ] as const;
