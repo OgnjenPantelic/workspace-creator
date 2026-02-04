@@ -25,8 +25,11 @@ import {
   EXCLUDE_VARIABLES,
   AWS_REGIONS,
   AZURE_REGIONS,
-  GCP_REGIONS,
+  GCP_REGIONS, // Reserved for future GCP implementation
 } from "./constants";
+
+// Suppress TS6133 for GCP_REGIONS - reserved for future use
+void GCP_REGIONS;
 import { WelcomeScreen, CloudSelectionScreen, DependenciesScreen } from "./components/screens";
 
 // Deployment wizard steps
