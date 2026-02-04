@@ -165,6 +165,7 @@ h3 {
 }
 
 .template-card {
+  position: relative;
   background: #242426;
   border: 1px solid #35353a;
   border-radius: 8px;
@@ -683,6 +684,12 @@ input[type="checkbox"] {
 .dependency-version {
   color: #757575;
   font-size: 12px;
+}
+
+.dependency-note {
+  color: #888;
+  font-size: 11px;
+  margin-top: 2px;
 }
 
 .dependency-badge {

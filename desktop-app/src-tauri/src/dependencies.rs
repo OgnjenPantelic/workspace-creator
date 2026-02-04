@@ -1,6 +1,8 @@
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::process::Command;
+use std::fs;
 use which::which;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -12,71 +14,395 @@ pub struct DependencyStatus {
     pub install_url: String,
 }
 
+/// Configuration for finding a CLI binary
+#[allow(dead_code)] // Some fields only used on specific platforms
+struct CliPathConfig {
+    /// Binary name without extension (e.g., "terraform", "aws", "az")
+    binary_name: &'static str,
+    /// Windows-specific binary name if different (e.g., "az.cmd")
+    windows_binary_name: Option<&'static str>,
+    /// Common installation paths on Windows
+    windows_paths: &'static [&'static str],
+    /// Common installation paths on macOS/Linux
+    unix_paths: &'static [&'static str],
+    /// Additional paths to check in home directory (relative to home)
+    home_relative_paths: &'static [&'static str],
+    /// Additional paths to check based on env vars (env_var, relative_path)
+    env_var_paths: &'static [(&'static str, &'static str)],
+}
+
+/// Generic function to find a CLI binary path
+fn find_cli_path(config: &CliPathConfig) -> Option<PathBuf> {
+    #[cfg(target_os = "windows")]
+    let binary_name = config.windows_binary_name.unwrap_or(config.binary_name);
+    #[cfg(not(target_os = "windows"))]
+    let binary_name = config.binary_name;
+
+    // Check env var paths first
+    for (env_var, relative_path) in config.env_var_paths {
+        if let Ok(base_path) = std::env::var(env_var) {
+            let p = PathBuf::from(base_path).join(relative_path);
+            if p.exists() {
+                return Some(p);
+            }
+        }
+    }
+
+    // Check home-relative paths
+    if let Some(home) = dirs::home_dir() {
+        for relative_path in config.home_relative_paths {
+            let p = home.join(relative_path);
+            if p.exists() {
+                return Some(p);
+            }
+        }
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        for path in config.windows_paths {
+            let p = PathBuf::from(path);
+            if p.exists() {
+                return Some(p);
+            }
+        }
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        for path in config.unix_paths {
+            let p = PathBuf::from(path);
+            if p.exists() {
+                return Some(p);
+            }
+        }
+    }
+
+    // Fall back to which
+    if let Ok(p) = which(binary_name) {
+        return Some(p);
+    }
+
+    // On Windows, also try .cmd extension
+    #[cfg(target_os = "windows")]
+    {
+        let cmd_name = format!("{}.cmd", config.binary_name);
+        if let Ok(p) = which(&cmd_name) {
+            return Some(p);
+        }
+    }
+
+    None
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct DatabricksProfile {
+    pub name: String,
+    pub host: String,
+    pub account_id: Option<String>,
+    pub has_client_credentials: bool,
+    pub has_token: bool,
+    pub cloud: String, // "aws" or "azure"
+}
+
+/// Find Databricks CLI binary
+pub fn find_databricks_cli_path() -> Option<PathBuf> {
+    static CONFIG: CliPathConfig = CliPathConfig {
+        binary_name: "databricks",
+        windows_binary_name: Some("databricks.exe"),
+        windows_paths: &[
+            "C:\\Program Files\\Databricks\\databricks.exe",
+            "C:\\Program Files (x86)\\Databricks\\databricks.exe",
+        ],
+        unix_paths: &[
+            "/usr/local/bin/databricks",
+            "/opt/homebrew/bin/databricks",
+            "/usr/bin/databricks",
+        ],
+        home_relative_paths: &[
+            ".local/bin/databricks",  // pip install location
+        ],
+        env_var_paths: &[
+            ("LOCALAPPDATA", "Programs/databricks/databricks.exe"),
+        ],
+    };
+    find_cli_path(&CONFIG)
+}
+
+pub fn check_databricks_cli() -> DependencyStatus {
+    let mut status = DependencyStatus {
+        name: "Databricks CLI".to_string(),
+        installed: false,
+        version: None,
+        required: false,
+        install_url: "https://docs.databricks.com/en/dev-tools/cli/install.html".to_string(),
+    };
+
+    if let Some(cli_path) = find_databricks_cli_path() {
+        status.installed = true;
+        if let Ok(output) = Command::new(&cli_path).arg("--version").output() {
+            if let Ok(stdout) = String::from_utf8(output.stdout) {
+                // Version output is like "Databricks CLI v0.x.x"
+                status.version = Some(stdout.trim().to_string());
+            }
+        }
+    }
+
+    status
+}
+
+/// Get the path to the Databricks config file
+pub fn get_databricks_config_path() -> Option<PathBuf> {
+    // Check DATABRICKS_CONFIG_FILE env var first
+    if let Ok(config_file) = std::env::var("DATABRICKS_CONFIG_FILE") {
+        let p = PathBuf::from(config_file);
+        if p.exists() {
+            return Some(p);
+        }
+    }
+    
+    // Default location: ~/.databrickscfg
+    if let Some(home) = dirs::home_dir() {
+        let p = home.join(".databrickscfg");
+        if p.exists() {
+            return Some(p);
+        }
+    }
+    
+    None
+}
+
+/// Parse the Databricks config file and extract profiles
+pub fn read_databricks_profiles() -> Vec<DatabricksProfile> {
+    let mut profiles = Vec::new();
+    
+    let config_path = match get_databricks_config_path() {
+        Some(p) => p,
+        None => return profiles,
+    };
+    
+    let content = match fs::read_to_string(&config_path) {
+        Ok(c) => c,
+        Err(_) => return profiles,
+    };
+    
+    let mut current_profile: Option<String> = None;
+    let mut current_data: HashMap<String, String> = HashMap::new();
+    
+    for line in content.lines() {
+        let line = line.trim();
+        
+        // Skip empty lines and comments
+        if line.is_empty() || line.starts_with('#') || line.starts_with(';') {
+            continue;
+        }
+        
+        // Check for section header [profile_name]
+        if line.starts_with('[') && line.ends_with(']') {
+            // Save previous profile if exists
+            if let Some(profile_name) = current_profile.take() {
+                if let Some(profile) = create_profile(&profile_name, &current_data) {
+                    profiles.push(profile);
+                }
+            }
+            
+            // Start new profile
+            current_profile = Some(line[1..line.len()-1].to_string());
+            current_data.clear();
+            continue;
+        }
+        
+        // Parse key = value
+        if let Some(eq_pos) = line.find('=') {
+            let key = line[..eq_pos].trim().to_lowercase();
+            let value = line[eq_pos + 1..].trim().to_string();
+            current_data.insert(key, value);
+        }
+    }
+    
+    // Don't forget the last profile
+    if let Some(profile_name) = current_profile {
+        if let Some(profile) = create_profile(&profile_name, &current_data) {
+            profiles.push(profile);
+        }
+    }
+    
+    profiles
+}
+
+fn create_profile(name: &str, data: &HashMap<String, String>) -> Option<DatabricksProfile> {
+    let host = data.get("host")?.clone();
+    
+    // Determine cloud from host
+    let cloud = if host.contains("azuredatabricks") {
+        "azure".to_string()
+    } else if host.contains("gcp.databricks.com") {
+        "gcp".to_string()
+    } else if host.contains("cloud.databricks.com") || host.contains("accounts.cloud.databricks") {
+        "aws".to_string()
+    } else {
+        // Custom or unknown host, skip
+        return None;
+    };
+    
+    // Check for various auth types
+    let has_client_credentials = data.contains_key("client_id") && data.contains_key("client_secret");
+    let has_token = data.contains_key("token");
+    // OAuth profiles created by `databricks auth login` might have auth_type set
+    // or just have host + account_id (using token cache)
+    let has_oauth = data.get("auth_type").map(|t| t.contains("oauth")).unwrap_or(false);
+    
+    Some(DatabricksProfile {
+        name: name.to_string(),
+        host,
+        account_id: data.get("account_id").cloned(),
+        has_client_credentials,
+        has_token: has_token || has_oauth,
+        cloud,
+    })
+}
+
+/// Get Databricks profiles filtered by cloud and account-level only
+pub fn get_databricks_profiles_for_cloud(cloud: &str) -> Vec<DatabricksProfile> {
+    let all_profiles = read_databricks_profiles();
+    
+    // Account-level hosts
+    let aws_account_host = "accounts.cloud.databricks.com";
+    let azure_account_host = "accounts.azuredatabricks.net";
+    let gcp_account_host = "accounts.gcp.databricks.com";
+    
+    let mut filtered: Vec<DatabricksProfile> = all_profiles
+        .into_iter()
+        .filter(|p| {
+            // Must match the cloud
+            if p.cloud != cloud {
+                return false;
+            }
+            
+            // Must be account-level (not workspace-level)
+            let is_account_level = match cloud {
+                "aws" => p.host.contains(aws_account_host),
+                "azure" => p.host.contains(azure_account_host),
+                "gcp" => p.host.contains(gcp_account_host),
+                _ => false,
+            };
+            
+            if !is_account_level {
+                return false;
+            }
+            
+            // Must have account_id
+            if p.account_id.is_none() {
+                return false;
+            }
+            
+            // For AWS and GCP, only allow service principal profiles (with client credentials)
+            // SSO/OAuth profiles don't work for newly created workspaces on AWS/GCP
+            // because there's no cached token for the new workspace URL
+            if (cloud == "aws" || cloud == "gcp") && !p.has_client_credentials {
+                return false;
+            }
+            
+            // For Azure, allow all profiles (SSO works due to azure_workspace_resource_id)
+            true
+        })
+        .collect::<Vec<_>>();
+    
+    // Sort profiles: deployer-* profiles first, then alphabetically
+    filtered.sort_by(|a, b| {
+        let a_is_deployer = a.name.starts_with("deployer-");
+        let b_is_deployer = b.name.starts_with("deployer-");
+        
+        match (a_is_deployer, b_is_deployer) {
+            (true, false) => std::cmp::Ordering::Less,
+            (false, true) => std::cmp::Ordering::Greater,
+            _ => a.name.cmp(&b.name),
+        }
+    });
+    
+    filtered
+}
+
+/// Find git binary
+pub fn find_git_path() -> Option<PathBuf> {
+    static CONFIG: CliPathConfig = CliPathConfig {
+        binary_name: "git",
+        windows_binary_name: Some("git.exe"),
+        windows_paths: &[
+            "C:\\Program Files\\Git\\cmd\\git.exe",
+            "C:\\Program Files (x86)\\Git\\cmd\\git.exe",
+            "C:\\Program Files\\Git\\bin\\git.exe",
+        ],
+        unix_paths: &[
+            "/usr/bin/git",
+            "/usr/local/bin/git",
+            "/opt/homebrew/bin/git",
+        ],
+        home_relative_paths: &[],
+        env_var_paths: &[],
+    };
+    find_cli_path(&CONFIG)
+}
+
+pub fn check_git() -> DependencyStatus {
+    let mut status = DependencyStatus {
+        name: "Git".to_string(),
+        installed: false,
+        version: None,
+        required: true,
+        install_url: "https://git-scm.com/downloads".to_string(),
+    };
+
+    if let Some(git_path) = find_git_path() {
+        status.installed = true;
+        if let Ok(output) = Command::new(&git_path).arg("--version").output() {
+            if let Ok(stdout) = String::from_utf8(output.stdout) {
+                // Extract version from "git version 2.x.x"
+                if let Some(version) = stdout.strip_prefix("git version ") {
+                    status.version = Some(version.trim().to_string());
+                }
+            }
+        }
+    }
+
+    status
+}
+
 /// Find terraform binary by checking common installation paths
 /// macOS GUI apps don't inherit shell PATH, so we check explicit locations
 pub fn find_terraform_path() -> Option<PathBuf> {
-    // Determine the binary name based on OS
+    // Check our own install directory first
     #[cfg(target_os = "windows")]
     let binary_name = "terraform.exe";
     #[cfg(not(target_os = "windows"))]
     let binary_name = "terraform";
 
-    // Check our own install directory first
     let app_install_path = get_terraform_install_path().join(binary_name);
     if app_install_path.exists() {
         return Some(app_install_path);
     }
 
-    #[cfg(target_os = "windows")]
-    {
-        // Common installation paths on Windows
-        let common_paths = [
+    static CONFIG: CliPathConfig = CliPathConfig {
+        binary_name: "terraform",
+        windows_binary_name: Some("terraform.exe"),
+        windows_paths: &[
             "C:\\Program Files\\Terraform\\terraform.exe",
             "C:\\Program Files (x86)\\Terraform\\terraform.exe",
             "C:\\HashiCorp\\Terraform\\terraform.exe",
-        ];
-
-        for path in common_paths {
-            let p = PathBuf::from(path);
-            if p.exists() {
-                return Some(p);
-            }
-        }
-
-        // Check in user's local app data
-        if let Some(local_app_data) = std::env::var_os("LOCALAPPDATA") {
-            let p = PathBuf::from(local_app_data).join("Programs").join("Terraform").join("terraform.exe");
-            if p.exists() {
-                return Some(p);
-            }
-        }
-    }
-
-    #[cfg(not(target_os = "windows"))]
-    {
-        // Common installation paths on macOS/Linux
-        let common_paths = [
+        ],
+        unix_paths: &[
             "/usr/local/bin/terraform",
-            "/opt/homebrew/bin/terraform",      // Homebrew on Apple Silicon
+            "/opt/homebrew/bin/terraform",
             "/usr/bin/terraform",
             "/bin/terraform",
-            "/opt/local/bin/terraform",         // MacPorts
-        ];
-
-        for path in common_paths {
-            let p = PathBuf::from(path);
-            if p.exists() {
-                return Some(p);
-            }
-        }
-    }
-
-    // Fall back to which (works if PATH is properly set)
-    if let Ok(p) = which(binary_name) {
-        return Some(p);
-    }
-
-    None
+            "/opt/local/bin/terraform",
+        ],
+        home_relative_paths: &[],
+        env_var_paths: &[
+            ("LOCALAPPDATA", "Programs/Terraform/terraform.exe"),
+        ],
+    };
+    find_cli_path(&CONFIG)
 }
 
 pub fn check_terraform() -> DependencyStatus {
@@ -107,57 +433,25 @@ pub fn check_terraform() -> DependencyStatus {
 
 /// Find AWS CLI binary by checking common installation paths
 pub fn find_aws_cli_path() -> Option<PathBuf> {
-    #[cfg(target_os = "windows")]
-    {
-        // Common installation paths on Windows
-        let common_paths = [
+    static CONFIG: CliPathConfig = CliPathConfig {
+        binary_name: "aws",
+        windows_binary_name: Some("aws.exe"),
+        windows_paths: &[
             "C:\\Program Files\\Amazon\\AWSCLIV2\\aws.exe",
             "C:\\Program Files (x86)\\Amazon\\AWSCLIV2\\aws.exe",
-        ];
-
-        for path in common_paths {
-            let p = PathBuf::from(path);
-            if p.exists() {
-                return Some(p);
-            }
-        }
-
-        // Fall back to which
-        if let Ok(p) = which("aws") {
-            return Some(p);
-        }
-        // Also try aws.cmd which is common on Windows
-        if let Ok(p) = which("aws.cmd") {
-            return Some(p);
-        }
-    }
-
-    #[cfg(not(target_os = "windows"))]
-    {
-        // Common installation paths on macOS/Linux
-        let common_paths = [
+        ],
+        unix_paths: &[
             "/usr/local/bin/aws",
-            "/opt/homebrew/bin/aws",           // Homebrew on Apple Silicon
+            "/opt/homebrew/bin/aws",
             "/usr/bin/aws",
             "/bin/aws",
-            "/opt/local/bin/aws",              // MacPorts
-            "/Library/Frameworks/Python.framework/Versions/Current/bin/aws", // Python install
-        ];
-
-        for path in common_paths {
-            let p = PathBuf::from(path);
-            if p.exists() {
-                return Some(p);
-            }
-        }
-
-        // Fall back to which (works if PATH is properly set)
-        if let Ok(p) = which("aws") {
-            return Some(p);
-        }
-    }
-
-    None
+            "/opt/local/bin/aws",
+            "/Library/Frameworks/Python.framework/Versions/Current/bin/aws",
+        ],
+        home_relative_paths: &[],
+        env_var_paths: &[],
+    };
+    find_cli_path(&CONFIG)
 }
 
 pub fn check_aws_cli() -> DependencyStatus {
@@ -183,55 +477,24 @@ pub fn check_aws_cli() -> DependencyStatus {
 
 /// Find Azure CLI binary by checking common installation paths
 pub fn find_azure_cli_path() -> Option<PathBuf> {
-    #[cfg(target_os = "windows")]
-    {
-        // Common installation paths on Windows
-        let common_paths = [
+    static CONFIG: CliPathConfig = CliPathConfig {
+        binary_name: "az",
+        windows_binary_name: Some("az.cmd"),
+        windows_paths: &[
             "C:\\Program Files\\Microsoft SDKs\\Azure\\CLI2\\wbin\\az.cmd",
             "C:\\Program Files (x86)\\Microsoft SDKs\\Azure\\CLI2\\wbin\\az.cmd",
-        ];
-
-        for path in common_paths {
-            let p = PathBuf::from(path);
-            if p.exists() {
-                return Some(p);
-            }
-        }
-
-        // Fall back to which
-        if let Ok(p) = which("az") {
-            return Some(p);
-        }
-        if let Ok(p) = which("az.cmd") {
-            return Some(p);
-        }
-    }
-
-    #[cfg(not(target_os = "windows"))]
-    {
-        // Common installation paths on macOS/Linux
-        let common_paths = [
+        ],
+        unix_paths: &[
             "/usr/local/bin/az",
-            "/opt/homebrew/bin/az",            // Homebrew on Apple Silicon
+            "/opt/homebrew/bin/az",
             "/usr/bin/az",
             "/bin/az",
-            "/opt/local/bin/az",               // MacPorts
-        ];
-
-        for path in common_paths {
-            let p = PathBuf::from(path);
-            if p.exists() {
-                return Some(p);
-            }
-        }
-
-        // Fall back to which (works if PATH is properly set)
-        if let Ok(p) = which("az") {
-            return Some(p);
-        }
-    }
-
-    None
+            "/opt/local/bin/az",
+        ],
+        home_relative_paths: &[],
+        env_var_paths: &[],
+    };
+    find_cli_path(&CONFIG)
 }
 
 pub fn check_azure_cli() -> DependencyStatus {
@@ -259,64 +522,27 @@ pub fn check_azure_cli() -> DependencyStatus {
 
 /// Find gcloud CLI binary by checking common installation paths
 pub fn find_gcloud_cli_path() -> Option<PathBuf> {
-    #[cfg(target_os = "windows")]
-    let binary_name = "gcloud.cmd";
-    #[cfg(not(target_os = "windows"))]
-    let binary_name = "gcloud";
-
-    // Check user's home directory for gcloud SDK install
-    if let Some(home) = dirs::home_dir() {
-        #[cfg(target_os = "windows")]
-        let sdk_path = home.join("AppData").join("Local").join("Google").join("Cloud SDK").join("google-cloud-sdk").join("bin").join("gcloud.cmd");
-        #[cfg(not(target_os = "windows"))]
-        let sdk_path = home.join("google-cloud-sdk").join("bin").join("gcloud");
-        
-        if sdk_path.exists() {
-            return Some(sdk_path);
-        }
-    }
-
-    #[cfg(target_os = "windows")]
-    {
-        // Common installation paths on Windows
-        let common_paths = [
+    static CONFIG: CliPathConfig = CliPathConfig {
+        binary_name: "gcloud",
+        windows_binary_name: Some("gcloud.cmd"),
+        windows_paths: &[
             "C:\\Program Files\\Google\\Cloud SDK\\google-cloud-sdk\\bin\\gcloud.cmd",
             "C:\\Program Files (x86)\\Google\\Cloud SDK\\google-cloud-sdk\\bin\\gcloud.cmd",
-        ];
-
-        for path in common_paths {
-            let p = PathBuf::from(path);
-            if p.exists() {
-                return Some(p);
-            }
-        }
-    }
-
-    #[cfg(not(target_os = "windows"))]
-    {
-        // Common installation paths on macOS/Linux
-        let common_paths = [
+        ],
+        unix_paths: &[
             "/usr/local/bin/gcloud",
-            "/opt/homebrew/bin/gcloud",        // Homebrew on Apple Silicon
+            "/opt/homebrew/bin/gcloud",
             "/usr/bin/gcloud",
             "/bin/gcloud",
-            "/opt/local/bin/gcloud",           // MacPorts
-        ];
-
-        for path in common_paths {
-            let p = PathBuf::from(path);
-            if p.exists() {
-                return Some(p);
-            }
-        }
-    }
-
-    // Fall back to which (works if PATH is properly set)
-    if let Ok(p) = which(binary_name) {
-        return Some(p);
-    }
-
-    None
+            "/opt/local/bin/gcloud",
+        ],
+        home_relative_paths: &[
+            "google-cloud-sdk/bin/gcloud",
+            "AppData/Local/Google/Cloud SDK/google-cloud-sdk/bin/gcloud.cmd",
+        ],
+        env_var_paths: &[],
+    };
+    find_cli_path(&CONFIG)
 }
 
 pub fn check_gcloud_cli() -> DependencyStatus {
