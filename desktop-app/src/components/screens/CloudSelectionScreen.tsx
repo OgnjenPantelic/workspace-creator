@@ -38,7 +38,7 @@ const CloudSelectionScreen: React.FC<CloudSelectionScreenProps> = ({
         >
           <div className="cloud-name">Azure</div>
           <div className="cloud-description">
-            Deploy on Microsoft Azure with VNet injection and Unity Catalog
+            Deploy on Microsoft Azure with VNet injection and Unity Catalog support
           </div>
         </div>
 
@@ -48,16 +48,18 @@ const CloudSelectionScreen: React.FC<CloudSelectionScreenProps> = ({
         >
           <div className="cloud-name">AWS</div>
           <div className="cloud-description">
-            Deploy on Amazon Web Services with customer-managed VPC and Unity Catalog
+            Deploy on Amazon Web Services with customer-managed VPC and Unity Catalog support
           </div>
         </div>
 
-        <div className="cloud-card gcp disabled">
+        <div 
+          className={`cloud-card gcp ${loadingCloud ? "disabled" : ""}`}
+          onClick={() => !loadingCloud && onSelectCloud(CLOUDS.GCP)}
+        >
           <div className="cloud-name">GCP</div>
           <div className="cloud-description">
-            Deploy on Google Cloud Platform with Unity Catalog
+            Deploy on Google Cloud Platform with customer-managed VPC and Unity Catalog support
           </div>
-          <div className="coming-soon">Coming Soon</div>
         </div>
       </div>
     </div>

@@ -48,7 +48,12 @@ pub fn run() {
             commands::get_databricks_profiles,
             commands::databricks_cli_login,
             commands::get_databricks_profile_credentials,
+            commands::create_databricks_sp_profile,
             commands::check_uc_permissions,
+            commands::check_aws_permissions,
+            commands::check_azure_permissions,
+            commands::validate_gcp_credentials,
+            commands::check_gcp_permissions,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

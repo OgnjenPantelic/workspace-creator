@@ -44,12 +44,18 @@ export interface CloudCredentials {
   azure_subscription_id?: string;
   azure_client_id?: string;
   azure_client_secret?: string;
+  // GCP
+  gcp_project_id?: string;
+  gcp_credentials_json?: string;    // Service account JSON content
+  gcp_use_adc?: boolean;            // Use Application Default Credentials
   // Databricks
   databricks_account_id?: string;
   databricks_client_id?: string;
   databricks_client_secret?: string;
   databricks_profile?: string;      // Profile name from ~/.databrickscfg
   databricks_auth_type?: string;    // "profile" or "credentials"
+  // Cloud identifier
+  cloud?: string;                   // "aws", "azure", or "gcp"
 }
 
 export interface AwsProfile {
@@ -108,6 +114,21 @@ export interface UCPermissionCheck {
   message: string;
 }
 
+export interface CloudPermissionCheck {
+  has_all_permissions: boolean;
+  checked_permissions: string[];
+  missing_permissions: string[];
+  message: string;
+  is_warning: boolean;  // true = soft warning (can continue), false = hard block
+}
+
+export interface GcpValidation {
+  valid: boolean;
+  project_id: string | null;
+  account: string | null;
+  message: string;
+}
+
 export type AppScreen = 
   | 'welcome'
   | 'dependencies'
@@ -115,6 +136,7 @@ export type AppScreen =
   | 'databricks-credentials'
   | 'aws-credentials'
   | 'azure-credentials'
+  | 'gcp-credentials'
   | 'template-selection'
   | 'configuration'
   | 'unity-catalog-config'

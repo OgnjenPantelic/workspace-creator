@@ -83,7 +83,9 @@ resource "databricks_storage_credential" "uc_credential" {
   
   depends_on = [
     databricks_metastore_assignment.this,
-    azurerm_role_assignment.uc_storage_access
+    azurerm_role_assignment.uc_storage_access,
+    # Ensure SP is added to workspace before workspace-level operations (for SP auth)
+    databricks_mws_permission_assignment.sp_workspace_access
   ]
 }
 
