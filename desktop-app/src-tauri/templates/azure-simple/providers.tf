@@ -7,31 +7,29 @@ provider "azurerm" {
 }
 
 # Databricks workspace provider
-# - For databricks-cli (SSO): Uses Azure-native auth via azure_workspace_resource_id
-# - For oauth-m2m (SP): Uses Databricks SP credentials directly
-#   (SP must be added to workspace first via account provider - see databricks.tf)
+# - "databricks-cli" - Uses Databricks CLI profile authentication
+# - "azure-cli" - Uses Azure CLI OAuth authentication
+# - "oauth-m2m" - Uses service principal credentials
 provider "databricks" {
-  host                        = azurerm_databricks_workspace.this.workspace_url
-  # Azure auth for SSO profiles
-  azure_workspace_resource_id = var.databricks_auth_type == "databricks-cli" ? azurerm_databricks_workspace.this.id : null
-  # SP auth for oauth-m2m
-  auth_type                   = var.databricks_auth_type == "oauth-m2m" ? "oauth-m2m" : null
-  client_id                   = var.databricks_auth_type == "oauth-m2m" ? var.databricks_client_id : null
-  client_secret               = var.databricks_auth_type == "oauth-m2m" ? var.databricks_client_secret : null
+  host       = azurerm_databricks_workspace.this.workspace_url
+  auth_type  = var.databricks_auth_type
+  # For oauth-m2m only
+  client_id     = var.databricks_auth_type == "oauth-m2m" ? var.databricks_client_id : null
+  client_secret = var.databricks_auth_type == "oauth-m2m" ? var.databricks_client_secret : null
 }
 
 # Databricks account provider
-# auth_type is set dynamically:
-# - "oauth-m2m" for service principal credentials (uses client_id/client_secret vars)
-# - "databricks-cli" for CLI profile authentication (uses profile var)
+# - "databricks-cli" - Uses Databricks CLI profile authentication
+# - "azure-cli" - Uses Azure CLI OAuth authentication  
+# - "oauth-m2m" - Uses service principal credentials
 provider "databricks" {
-  alias         = "accounts"
-  host          = "https://accounts.azuredatabricks.net"
-  account_id    = var.databricks_account_id
-  auth_type     = var.databricks_auth_type
-  # For oauth-m2m: use client credentials
+  alias      = "accounts"
+  host       = "https://accounts.azuredatabricks.net"
+  account_id = var.databricks_account_id
+  auth_type  = var.databricks_auth_type
+  # For oauth-m2m only
   client_id     = var.databricks_auth_type == "oauth-m2m" ? var.databricks_client_id : null
   client_secret = var.databricks_auth_type == "oauth-m2m" ? var.databricks_client_secret : null
-  # For databricks-cli: use profile
-  profile       = var.databricks_auth_type == "databricks-cli" ? var.databricks_profile : null
+  # For databricks-cli only
+  profile = var.databricks_auth_type == "databricks-cli" ? var.databricks_profile : null
 }

@@ -44,10 +44,14 @@ export interface CloudCredentials {
   azure_subscription_id?: string;
   azure_client_id?: string;
   azure_client_secret?: string;
+  azure_account_email?: string;           // Email/user from Azure account
+  azure_databricks_use_identity?: boolean; // Use Azure identity for Databricks (account admin flow)
   // GCP
   gcp_project_id?: string;
   gcp_credentials_json?: string;    // Service account JSON content
   gcp_use_adc?: boolean;            // Use Application Default Credentials
+  gcp_oauth_token?: string;         // OAuth access token from gcloud auth print-access-token
+  gcp_service_account_email?: string; // Service account email for Databricks provider
   // Databricks
   databricks_account_id?: string;
   databricks_client_id?: string;
@@ -96,6 +100,7 @@ export interface UnityCatalogConfig {
   enabled: boolean;
   catalog_name: string;
   storage_name: string;  // S3 bucket name or Azure storage account name
+  metastore_id: string;  // Detected or user-provided existing metastore ID
 }
 
 export interface MetastoreInfo {
@@ -127,6 +132,8 @@ export interface GcpValidation {
   project_id: string | null;
   account: string | null;
   message: string;
+  oauth_token: string | null;
+  impersonated_account: string | null;
 }
 
 export type AppScreen = 

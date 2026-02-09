@@ -36,7 +36,7 @@ resource "databricks_mws_permission_assignment" "workspace_access" {
   principal_id = data.databricks_user.workspace_access.id
   permissions  = ["ADMIN"]
   depends_on = [
-    databricks_metastore_assignment.this
+    time_sleep.wait_for_identity_federation
   ]
 }
 
@@ -54,6 +54,9 @@ resource "databricks_mws_permission_assignment" "sp_workspace_access" {
   workspace_id = azurerm_databricks_workspace.this.workspace_id
   principal_id = data.databricks_service_principal.deployer[0].id
   permissions  = ["ADMIN"]
+  depends_on = [
+    time_sleep.wait_for_identity_federation
+  ]
 }
 
 # Metastore configuration
@@ -136,4 +139,12 @@ resource "databricks_metastore_assignment" "this" {
   provider     = databricks.accounts
   workspace_id = azurerm_databricks_workspace.this.workspace_id
   metastore_id = local.metastore_id_to_use
+}
+
+# Wait for Azure identity federation to propagate after metastore assignment
+# This enables the MWS permission assignment APIs (typically takes 1-2 minutes)
+resource "time_sleep" "wait_for_identity_federation" {
+  depends_on = [databricks_metastore_assignment.this]
+  
+  create_duration = "120s"
 }

@@ -1,0 +1,39 @@
+name: CI - Pull Request Validation
+
+on:
+  pull_request:
+    branches: [main, master]
+    paths:
+      - 'desktop-app/**'
+      - '.github/workflows/ci.yml'
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    defaults:
+      run:
+        working-directory: desktop-app
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: desktop-app/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run TypeScript compilation check
+        run: npm run build
+
+      - name: Run tests
+        run: npm run test:run

@@ -1,0 +1,1175 @@
+//! Databricks authentication and Unity Catalog permission commands.
+
+use super::debug_log;
+use super::{CloudCredentials, MetastoreInfo, UCPermissionCheck};
+use crate::dependencies;
+use serde::Serialize;
+use std::fs;
+use std::process::Stdio;
+
+/// List Databricks CLI profiles for a given cloud.
+#[tauri::command]
+pub fn get_databricks_profiles(cloud: String) -> Vec<dependencies::DatabricksProfile> {
+    dependencies::get_databricks_profiles_for_cloud(&cloud)
+}
+
+/// Run interactive `databricks auth login` for a given cloud/account.
+#[tauri::command]
+pub async fn databricks_cli_login(cloud: String, account_id: String) -> Result<String, String> {
+    let cli_path = dependencies::find_databricks_cli_path()
+        .ok_or_else(|| crate::errors::cli_not_found("Databricks CLI"))?;
+
+    let host = match cloud.as_str() {
+        "azure" => "https://accounts.azuredatabricks.net",
+        "gcp" => "https://accounts.gcp.databricks.com",
+        _ => "https://accounts.cloud.databricks.com",
+    };
+
+    let profile_name = format!("deployer-{}", &account_id[..8.min(account_id.len())]);
+
+    // Clear the token cache to force re-authentication
+    if let Some(home) = dirs::home_dir() {
+        let token_cache_path = home.join(".databricks").join("token-cache.json");
+        if token_cache_path.exists() {
+            if let Ok(content) = std::fs::read_to_string(&token_cache_path) {
+                if let Ok(mut cache) = serde_json::from_str::<serde_json::Value>(&content) {
+                    if let Some(obj) = cache.as_object_mut() {
+                        let keys_to_remove: Vec<String> = obj
+                            .keys()
+                            .filter(|k| k.contains(&account_id) || k.contains(host))
+                            .cloned()
+                            .collect();
+
+                        for key in keys_to_remove {
+                            obj.remove(&key);
+                        }
+
+                        if let Ok(new_content) = serde_json::to_string_pretty(&cache) {
+                            let _ = std::fs::write(&token_cache_path, new_content);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    let mut child = std::process::Command::new(&cli_path)
+        .args([
+            "auth",
+            "login",
+            "--host",
+            host,
+            "--account-id",
+            &account_id,
+            "--profile",
+            &profile_name,
+        ])
+        .stdin(Stdio::inherit())
+        .stdout(Stdio::inherit())
+        .stderr(Stdio::inherit())
+        .spawn()
+        .map_err(|e| format!("Failed to run Databricks CLI: {}", e))?;
+
+    let status = child
+        .wait()
+        .map_err(|e| format!("Failed to wait for Databricks CLI: {}", e))?;
+
+    if status.success() {
+        Ok(format!(
+            "Login successful! Profile '{}' created/updated.",
+            profile_name
+        ))
+    } else {
+        let profiles = dependencies::get_databricks_profiles_for_cloud(&cloud);
+        if profiles.iter().any(|p| p.name == profile_name) {
+            Ok(format!("Profile '{}' is ready.", profile_name))
+        } else {
+            Err("Login failed or was cancelled. Please try again.".to_string())
+        }
+    }
+}
+
+/// Read credentials from a specific Databricks CLI profile.
+#[tauri::command]
+pub fn get_databricks_profile_credentials(
+    profile_name: String,
+) -> Result<std::collections::HashMap<String, String>, String> {
+    let config_path = dependencies::get_databricks_config_path()
+        .ok_or_else(|| "Databricks config file not found".to_string())?;
+
+    let content = std::fs::read_to_string(&config_path)
+        .map_err(|e| format!("Failed to read config file: {}", e))?;
+
+    let mut in_target_profile = false;
+    let mut credentials: std::collections::HashMap<String, String> =
+        std::collections::HashMap::new();
+
+    for line in content.lines() {
+        let line = line.trim();
+
+        if line.starts_with('[') && line.ends_with(']') {
+            let section_name = &line[1..line.len() - 1];
+            in_target_profile = section_name == profile_name;
+            continue;
+        }
+
+        if in_target_profile {
+            if let Some(eq_pos) = line.find('=') {
+                let key = line[..eq_pos].trim().to_string();
+                let value = line[eq_pos + 1..].trim().to_string();
+                credentials.insert(key, value);
+            }
+        }
+    }
+
+    if credentials.is_empty() {
+        Err(format!(
+            "Profile '{}' not found or has no credentials",
+            profile_name
+        ))
+    } else {
+        Ok(credentials)
+    }
+}
+
+/// Create a Databricks CLI profile with service principal credentials.
+#[tauri::command]
+pub fn create_databricks_sp_profile(
+    cloud: String,
+    account_id: String,
+    client_id: String,
+    client_secret: String,
+) -> Result<String, String> {
+    let host = match cloud.as_str() {
+        "aws" => "https://accounts.cloud.databricks.com",
+        "azure" => "https://accounts.azuredatabricks.net",
+        "gcp" => "https://accounts.gcp.databricks.com",
+        _ => return Err(format!("Unsupported cloud: {}", cloud)),
+    };
+
+    let profile_name = format!("deployer-sp-{}", &account_id[..8.min(account_id.len())]);
+
+    let config_path = dependencies::get_databricks_config_path().unwrap_or_else(|| {
+        dirs::home_dir()
+            .map(|h| h.join(".databrickscfg"))
+            .expect("Could not determine home directory")
+    });
+
+    let existing_content = fs::read_to_string(&config_path).unwrap_or_default();
+
+    let new_profile_section = format!(
+        "[{}]\nhost = {}\naccount_id = {}\nclient_id = {}\nclient_secret = {}\n",
+        profile_name, host, account_id, client_id, client_secret
+    );
+
+    let mut new_content = String::new();
+    let mut in_target_profile = false;
+    let mut profile_replaced = false;
+    let mut skip_until_next_section = false;
+
+    for line in existing_content.lines() {
+        let trimmed = line.trim();
+
+        if trimmed.starts_with('[') && trimmed.ends_with(']') {
+            let section_name = &trimmed[1..trimmed.len() - 1];
+
+            if in_target_profile {
+                in_target_profile = false;
+                skip_until_next_section = false;
+            }
+
+            if section_name == profile_name {
+                in_target_profile = true;
+                skip_until_next_section = true;
+                profile_replaced = true;
+                new_content.push_str(&new_profile_section);
+                new_content.push('\n');
+                continue;
+            }
+        }
+
+        if !skip_until_next_section {
+            new_content.push_str(line);
+            new_content.push('\n');
+        }
+    }
+
+    if !profile_replaced {
+        if !new_content.is_empty() && !new_content.ends_with("\n\n") {
+            new_content.push('\n');
+        }
+        new_content.push_str(&new_profile_section);
+    }
+
+    if let Some(parent) = config_path.parent() {
+        fs::create_dir_all(parent)
+            .map_err(|e| format!("Failed to create config directory: {}", e))?;
+    }
+
+    fs::write(&config_path, new_content)
+        .map_err(|e| format!("Failed to write config file: {}", e))?;
+
+    Ok(profile_name)
+}
+
+/// Validate Databricks service principal credentials via OAuth token exchange.
+#[tauri::command]
+pub async fn validate_databricks_credentials(
+    account_id: String,
+    client_id: String,
+    client_secret: String,
+    cloud: String,
+) -> Result<String, String> {
+    let accounts_host = match cloud.as_str() {
+        "azure" => "accounts.azuredatabricks.net",
+        "gcp" => "accounts.gcp.databricks.com",
+        _ => "accounts.cloud.databricks.com",
+    };
+
+    let token_url = format!(
+        "https://{}/oidc/accounts/{}/v1/token",
+        accounts_host, account_id
+    );
+
+    let client = reqwest::Client::new();
+
+    let token_response = client
+        .post(&token_url)
+        .form(&[
+            ("grant_type", "client_credentials"),
+            ("scope", "all-apis"),
+        ])
+        .basic_auth(&client_id, Some(&client_secret))
+        .send()
+        .await
+        .map_err(|e| format!("Failed to connect to Databricks: {}", e))?;
+
+    if !token_response.status().is_success() {
+        let status = token_response.status();
+        let error_text = token_response.text().await.unwrap_or_default();
+        return Err(format!(
+            "Authentication failed ({}): Invalid credentials or account ID. {}",
+            status, error_text
+        ));
+    }
+
+    let token_json: serde_json::Value = token_response
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse token response: {}", e))?;
+
+    let access_token = token_json["access_token"]
+        .as_str()
+        .ok_or("No access token in response")?;
+
+    // Use SCIM API to list users — only account admins can do this
+    let users_url = format!(
+        "https://{}/api/2.0/accounts/{}/scim/v2/Users?count=1",
+        accounts_host, account_id
+    );
+
+    let users_response = client
+        .get(&users_url)
+        .bearer_auth(access_token)
+        .send()
+        .await
+        .map_err(|e| format!("Failed to verify account access: {}", e))?;
+
+    if !users_response.status().is_success() {
+        let status = users_response.status();
+        if status == reqwest::StatusCode::FORBIDDEN || status == reqwest::StatusCode::UNAUTHORIZED {
+            return Err(
+                "Service principal does not have account admin privileges. \
+                Please grant 'Account admin' role in Databricks Account Console → \
+                User Management → Service Principals → [Your SP] → Roles."
+                    .to_string(),
+            );
+        }
+        return Err(format!(
+            "Cannot verify account access ({}). Check your Account ID and service principal permissions.",
+            status
+        ));
+    }
+
+    let users_json: serde_json::Value = users_response
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse response: {}", e))?;
+
+    if users_json.get("totalResults").is_some() || users_json.get("Resources").is_some() {
+        return Ok("Credentials validated - Account Admin access confirmed".to_string());
+    }
+
+    Ok("Credentials validated successfully".to_string())
+}
+
+/// Validate a Databricks CLI profile (for OAuth/SSO profiles without client credentials).
+/// Uses the Databricks CLI to list users, which requires account admin access.
+#[tauri::command]
+pub async fn validate_databricks_profile(
+    profile_name: String,
+    cloud: String,
+) -> Result<String, String> {
+    let cli_path = dependencies::find_databricks_cli_path()
+        .ok_or_else(|| crate::errors::cli_not_found("Databricks CLI"))?;
+
+    let accounts_host = match cloud.as_str() {
+        "azure" => "accounts.azuredatabricks.net",
+        "gcp" => "accounts.gcp.databricks.com",
+        _ => "accounts.cloud.databricks.com",
+    };
+
+    // Use the CLI to list users (requires account admin access)
+    let output = std::process::Command::new(&cli_path)
+        .args([
+            "account", "users", "list",
+            "--profile", &profile_name,
+            "--output", "json",
+        ])
+        .output()
+        .map_err(|e| format!("Failed to run Databricks CLI: {}", e))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let stderr_trimmed = stderr.trim();
+
+        if stderr_trimmed.contains("unauthorized") || stderr_trimmed.contains("401") {
+            return Err(format!(
+                "Profile '{}' is not authorized. Please re-authenticate:\n\
+                databricks auth login --host https://{} --profile {}",
+                profile_name, accounts_host, profile_name
+            ));
+        }
+        if stderr_trimmed.contains("403") || stderr_trimmed.contains("forbidden") {
+            return Err(format!(
+                "Profile '{}' does not have account admin privileges.\n\n\
+                Please grant the 'Account admin' role in Databricks Account Console → User Management.",
+                profile_name
+            ));
+        }
+
+        return Err(format!(
+            "Failed to validate profile '{}': {}",
+            profile_name, stderr_trimmed
+        ));
+    }
+
+    Ok(format!("Profile '{}' validated - Account Admin access confirmed", profile_name))
+}
+
+// ─── Unity Catalog ──────────────────────────────────────────────────────────
+
+/// Generate a message about metastore ownership for permission guidance.
+fn get_metastore_owner_info(metastore_owner: &str, credentials: &CloudCredentials) -> String {
+    let is_user = metastore_owner.contains('@');
+    let is_uuid = metastore_owner.len() == 36
+        && metastore_owner.chars().filter(|c| *c == '-').count() == 4
+        && metastore_owner
+            .chars()
+            .all(|c| c.is_ascii_hexdigit() || c == '-');
+
+    // Determine the current user/SP identity based on active authentication method
+    // Priority: GCP service account (JSON or email) > Azure user > Databricks SP > Databricks profile
+    let current_identity = if let Some(gcp_creds_json) = credentials.gcp_credentials_json.as_ref().filter(|s| !s.is_empty()) {
+        // GCP service account authentication (credentials mode - extract from JSON)
+        if let Ok(sa_data) = serde_json::from_str::<serde_json::Value>(gcp_creds_json) {
+            if let Some(email) = sa_data["client_email"].as_str() {
+                format!("Service account '{}'", email)
+            } else {
+                // JSON parsing succeeded but no client_email, continue to next check
+                if let Some(sa_email) = credentials.gcp_service_account_email.as_ref().filter(|s| !s.is_empty()) {
+                    format!("Service account '{}'", sa_email)
+                } else if let Some(email) = credentials.azure_account_email.as_ref().filter(|s| !s.is_empty()) {
+                    format!("User '{}'", email)
+                } else if let Some(client_id) = credentials.databricks_client_id.as_ref().filter(|s| !s.is_empty()) {
+                    format!("Service principal '{}'", client_id)
+                } else if let Some(profile) = credentials.databricks_profile.as_ref().filter(|s| !s.is_empty()) {
+                    format!("Profile '{}'", profile)
+                } else {
+                    "Your Databricks user or service principal".to_string()
+                }
+            }
+        } else {
+            // JSON parsing failed, continue to other checks
+            if let Some(sa_email) = credentials.gcp_service_account_email.as_ref().filter(|s| !s.is_empty()) {
+                format!("Service account '{}'", sa_email)
+            } else if let Some(email) = credentials.azure_account_email.as_ref().filter(|s| !s.is_empty()) {
+                format!("User '{}'", email)
+            } else if let Some(client_id) = credentials.databricks_client_id.as_ref().filter(|s| !s.is_empty()) {
+                format!("Service principal '{}'", client_id)
+            } else if let Some(profile) = credentials.databricks_profile.as_ref().filter(|s| !s.is_empty()) {
+                format!("Profile '{}'", profile)
+            } else {
+                "Your Databricks user or service principal".to_string()
+            }
+        }
+    } else if let Some(sa_email) = credentials.gcp_service_account_email.as_ref().filter(|s| !s.is_empty()) {
+        // GCP service account authentication (impersonation mode)
+        format!("Service account '{}'", sa_email)
+    } else if let Some(email) = credentials.azure_account_email.as_ref().filter(|s| !s.is_empty()) {
+        // Azure user identity
+        format!("User '{}'", email)
+    } else if let Some(client_id) = credentials.databricks_client_id.as_ref().filter(|s| !s.is_empty()) {
+        // Databricks service principal (used by AWS/Azure/GCP)
+        format!("Service principal '{}'", client_id)
+    } else if let Some(profile) = credentials.databricks_profile.as_ref().filter(|s| !s.is_empty()) {
+        // Databricks CLI profile
+        format!("Profile '{}'", profile)
+    } else {
+        "Your Databricks user or service principal".to_string()
+    };
+
+    if is_user {
+        format!(
+            "Metastore owned by user '{}'. {} should have the required permissions granted on this metastore.",
+            metastore_owner, current_identity
+        )
+    } else if is_uuid {
+        format!(
+            "Metastore owned by service principal '{}'. {} should have the required permissions granted on this metastore.",
+            metastore_owner, current_identity
+        )
+    } else {
+        format!(
+            "Metastore owned by group '{}'. {} should have the required permissions granted on this metastore.",
+            metastore_owner, current_identity
+        )
+    }
+}
+
+/// Check Unity Catalog permissions (metastore presence and grants).
+#[tauri::command]
+pub async fn check_uc_permissions(
+    credentials: CloudCredentials,
+    region: String,
+) -> Result<UCPermissionCheck, String> {
+    let cloud = credentials.cloud.as_deref().unwrap_or_else(|| {
+        if credentials.azure_tenant_id.is_some() {
+            "azure"
+        } else if credentials.gcp_project_id.is_some() {
+            "gcp"
+        } else {
+            "aws"
+        }
+    });
+
+    let account_id = credentials
+        .databricks_account_id
+        .as_ref()
+        .filter(|s| !s.is_empty())
+        .ok_or("Databricks account ID is required")?;
+
+    let auth_type = credentials
+        .databricks_auth_type
+        .as_deref()
+        .unwrap_or("credentials");
+
+    // For GCP, always use the GCP-specific ID token method
+    if auth_type == "profile" && cloud != "gcp" {
+        let profile_name = credentials
+            .databricks_profile
+            .as_deref()
+            .unwrap_or("DEFAULT");
+
+        let cli_path = dependencies::find_databricks_cli_path();
+
+        if let Some(cli) = cli_path {
+            let output = std::process::Command::new(&cli)
+                .args([
+                    "account",
+                    "metastores",
+                    "list",
+                    "--output",
+                    "json",
+                    "-p",
+                    profile_name,
+                ])
+                .output();
+
+            if let Ok(out) = output {
+                if out.status.success() {
+                    let stdout = String::from_utf8_lossy(&out.stdout);
+
+                    if let Ok(metastores_json) =
+                        serde_json::from_str::<serde_json::Value>(&stdout)
+                    {
+                        let region_normalized =
+                            region.to_lowercase().replace(" ", "").replace("-", "");
+
+                        if let Some(arr) = metastores_json.as_array() {
+                            let matching_metastore = arr.iter().find(|m| {
+                                let metastore_region = m["region"].as_str().unwrap_or("");
+                                let metastore_region_normalized = metastore_region
+                                    .to_lowercase()
+                                    .replace(" ", "")
+                                    .replace("-", "");
+                                metastore_region_normalized == region_normalized
+                            });
+
+                            if let Some(metastore) = matching_metastore {
+                                let metastore_id =
+                                    metastore["metastore_id"].as_str().unwrap_or("");
+                                let metastore_name = metastore["name"].as_str().unwrap_or("");
+                                let metastore_owner = metastore["owner"].as_str().unwrap_or("");
+
+                                let message = get_metastore_owner_info(metastore_owner, &credentials);
+
+                                return Ok(UCPermissionCheck {
+                                    metastore: MetastoreInfo {
+                                        exists: true,
+                                        metastore_id: Some(metastore_id.to_string()),
+                                        metastore_name: Some(metastore_name.to_string()),
+                                        region: Some(region),
+                                    },
+                                    has_create_catalog: false,
+                                    has_create_external_location: false,
+                                    has_create_storage_credential: false,
+                                    can_create_catalog: false,
+                                    message,
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        return Ok(UCPermissionCheck {
+            metastore: MetastoreInfo {
+                exists: false,
+                metastore_id: None,
+                metastore_name: None,
+                region: Some(region),
+            },
+            has_create_catalog: true,
+            has_create_external_location: true,
+            has_create_storage_credential: true,
+            can_create_catalog: true,
+            message: "No metastore found in region. A new one will be created.".to_string(),
+        });
+    }
+
+    // For GCP, generate an ID token and call the Databricks Account Metastores API
+    if cloud == "gcp" {
+        let mut id_token: Option<String> = None;
+
+        // Method 1: Use service account JSON credentials
+        if let Some(sa_json) = credentials
+            .gcp_credentials_json
+            .as_ref()
+            .filter(|s| !s.is_empty())
+        {
+            if let Ok(sa_creds) = serde_json::from_str::<serde_json::Value>(sa_json) {
+                let client_email = sa_creds["client_email"].as_str();
+                let private_key = sa_creds["private_key"].as_str();
+
+                if let (Some(email), Some(key)) = (client_email, private_key) {
+                    use jsonwebtoken::{encode, Algorithm, EncodingKey, Header};
+
+                    let now = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap()
+                        .as_secs();
+
+                    #[derive(Serialize)]
+                    struct IdTokenClaims {
+                        iss: String,
+                        sub: String,
+                        aud: String,
+                        target_audience: String,
+                        iat: u64,
+                        exp: u64,
+                    }
+
+                    let claims = IdTokenClaims {
+                        iss: email.to_string(),
+                        sub: email.to_string(),
+                        aud: "https://oauth2.googleapis.com/token".to_string(),
+                        target_audience: "https://accounts.gcp.databricks.com".to_string(),
+                        iat: now,
+                        exp: now + 3600,
+                    };
+
+                    let header = Header::new(Algorithm::RS256);
+
+                    if let Ok(encoding_key) = EncodingKey::from_rsa_pem(key.as_bytes()) {
+                        if let Ok(assertion) = encode(&header, &claims, &encoding_key) {
+                            let client = reqwest::Client::new();
+                            let token_response = client
+                                .post("https://oauth2.googleapis.com/token")
+                                .form(&[
+                                    (
+                                        "grant_type",
+                                        "urn:ietf:params:oauth:grant-type:jwt-bearer",
+                                    ),
+                                    ("assertion", &assertion),
+                                ])
+                                .send()
+                                .await;
+
+                            if let Ok(resp) = token_response {
+                                if resp.status().is_success() {
+                                    if let Ok(token_json) =
+                                        resp.json::<serde_json::Value>().await
+                                    {
+                                        id_token = token_json["id_token"]
+                                            .as_str()
+                                            .map(|s| s.to_string());
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Method 2: Use IAM Credentials API with OAuth token
+        if id_token.is_none() {
+            debug_log!("[check_uc_permissions] Method 2: Trying IAM Credentials API");
+            debug_log!(
+                "[check_uc_permissions] gcp_oauth_token present: {}",
+                credentials
+                    .gcp_oauth_token
+                    .as_ref()
+                    .map(|s| !s.is_empty())
+                    .unwrap_or(false)
+            );
+            debug_log!(
+                "[check_uc_permissions] gcp_service_account_email: {:?}",
+                credentials.gcp_service_account_email
+            );
+
+            if let Some(oauth_token) =
+                credentials.gcp_oauth_token.as_ref().filter(|s| !s.is_empty())
+            {
+                if let Some(sa_email) = credentials
+                    .gcp_service_account_email
+                    .as_ref()
+                    .filter(|s| !s.is_empty())
+                {
+                    let client = reqwest::Client::new();
+
+                    let generate_token_url = format!(
+                        "https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/{}:generateIdToken",
+                        sa_email
+                    );
+
+                    debug_log!("[check_uc_permissions] Calling: {}", generate_token_url);
+
+                    let token_response = client
+                        .post(&generate_token_url)
+                        .bearer_auth(oauth_token)
+                        .json(&serde_json::json!({
+                            "audience": "https://accounts.gcp.databricks.com",
+                            "includeEmail": true
+                        }))
+                        .send()
+                        .await;
+
+                    if let Ok(resp) = token_response {
+                        let status = resp.status();
+                        debug_log!(
+                            "[check_uc_permissions] IAM API response status: {}",
+                            status
+                        );
+                        if status.is_success() {
+                            if let Ok(token_json) = resp.json::<serde_json::Value>().await {
+                                id_token =
+                                    token_json["token"].as_str().map(|s| s.to_string());
+                                debug_log!(
+                                    "[check_uc_permissions] Got ID token via IAM API: {}",
+                                    id_token.is_some()
+                                );
+                            }
+                        } else {
+                            let error_body = resp.text().await.unwrap_or_default();
+                            debug_log!(
+                                "[check_uc_permissions] IAM API error: {}",
+                                error_body
+                            );
+                        }
+                    } else if let Err(e) = token_response {
+                        debug_log!(
+                            "[check_uc_permissions] IAM API request failed: {}",
+                            e
+                        );
+                    }
+                }
+            }
+        }
+
+        // Method 3: Fall back to gcloud CLI
+        if id_token.is_none() {
+            debug_log!("[check_uc_permissions] Method 3: Trying gcloud CLI");
+            if let Some(sa_email) = credentials
+                .gcp_service_account_email
+                .as_ref()
+                .filter(|s| !s.is_empty())
+            {
+                if let Some(gcloud_cli) = dependencies::find_gcloud_cli_path() {
+                    let mut id_token_cmd = std::process::Command::new(&gcloud_cli);
+                    id_token_cmd.args([
+                        "auth",
+                        "print-identity-token",
+                        "--impersonate-service-account",
+                        sa_email,
+                        "--audiences",
+                        "https://accounts.gcp.databricks.com",
+                        "--include-email",
+                    ]);
+
+                    if let Ok(output) = id_token_cmd.output() {
+                        if output.status.success() {
+                            let token =
+                                String::from_utf8_lossy(&output.stdout).trim().to_string();
+                            if !token.is_empty() {
+                                id_token = Some(token);
+                                debug_log!(
+                                    "[check_uc_permissions] Got ID token via gcloud CLI"
+                                );
+                            }
+                        } else {
+                            let stderr = String::from_utf8_lossy(&output.stderr);
+                            debug_log!(
+                                "[check_uc_permissions] gcloud CLI failed: {}",
+                                stderr
+                            );
+                        }
+                    }
+                }
+            }
+        }
+
+        debug_log!(
+            "[check_uc_permissions] Final id_token present: {}",
+            id_token.is_some()
+        );
+
+        // If we got an ID token, call the Databricks Metastores API
+        if let Some(token) = id_token {
+            let client = reqwest::Client::new();
+            let metastores_url = format!(
+                "https://accounts.gcp.databricks.com/api/2.0/accounts/{}/metastores",
+                account_id
+            );
+
+            debug_log!(
+                "[check_uc_permissions] Calling Databricks Metastores API: {}",
+                metastores_url
+            );
+
+            let metastores_response = client.get(&metastores_url).bearer_auth(&token).send().await;
+
+            if let Ok(resp) = metastores_response {
+                let status = resp.status();
+                debug_log!("[check_uc_permissions] Databricks API status: {}", status);
+
+                if status.is_success() {
+                    if let Ok(metastores_json) = resp.json::<serde_json::Value>().await {
+                        debug_log!(
+                            "[check_uc_permissions] Metastores response: {}",
+                            metastores_json
+                        );
+
+                        let metastores = metastores_json["metastores"].as_array();
+                        let region_normalized =
+                            region.to_lowercase().replace(" ", "").replace("-", "");
+                        debug_log!(
+                            "[check_uc_permissions] Looking for region: {} (normalized: {})",
+                            region,
+                            region_normalized
+                        );
+
+                        let matching_metastore = metastores.and_then(|arr| {
+                            arr.iter().find(|m| {
+                                let metastore_region = m["region"].as_str().unwrap_or("");
+                                let metastore_region_normalized = metastore_region
+                                    .to_lowercase()
+                                    .replace(" ", "")
+                                    .replace("-", "");
+                                metastore_region_normalized == region_normalized
+                            })
+                        });
+
+                        if let Some(metastore) = matching_metastore {
+                            let metastore_id =
+                                metastore["metastore_id"].as_str().unwrap_or("");
+                            let metastore_name = metastore["name"].as_str().unwrap_or("");
+                            let metastore_owner = metastore["owner"].as_str().unwrap_or("");
+
+                            let message = get_metastore_owner_info(metastore_owner, &credentials);
+
+                            return Ok(UCPermissionCheck {
+                                metastore: MetastoreInfo {
+                                    exists: true,
+                                    metastore_id: Some(metastore_id.to_string()),
+                                    metastore_name: Some(metastore_name.to_string()),
+                                    region: Some(region),
+                                },
+                                has_create_catalog: false,
+                                has_create_external_location: false,
+                                has_create_storage_credential: false,
+                                can_create_catalog: false,
+                                message,
+                            });
+                        } else {
+                            return Ok(UCPermissionCheck {
+                                metastore: MetastoreInfo {
+                                    exists: false,
+                                    metastore_id: None,
+                                    metastore_name: None,
+                                    region: Some(region),
+                                },
+                                has_create_catalog: true,
+                                has_create_external_location: true,
+                                has_create_storage_credential: true,
+                                can_create_catalog: true,
+                                message: "No metastore found in region. A new one will be created."
+                                    .to_string(),
+                            });
+                        }
+                    }
+                }
+            }
+        }
+
+        // Graceful fallback
+        return Ok(UCPermissionCheck {
+            metastore: MetastoreInfo {
+                exists: false,
+                metastore_id: None,
+                metastore_name: None,
+                region: Some(region),
+            },
+            has_create_catalog: true,
+            has_create_external_location: true,
+            has_create_storage_credential: true,
+            can_create_catalog: true,
+            message: "Metastore detection unavailable. Any existing metastore will be auto-detected during deployment.".to_string(),
+        });
+    }
+
+    // Service principal credentials path
+    let client_id = credentials
+        .databricks_client_id
+        .as_ref()
+        .filter(|s| !s.is_empty())
+        .ok_or("Client ID is required for permission check")?;
+
+    let client_secret = credentials
+        .databricks_client_secret
+        .as_ref()
+        .filter(|s| !s.is_empty())
+        .ok_or("Client Secret is required for permission check")?;
+
+    let accounts_host = match cloud {
+        "azure" => "accounts.azuredatabricks.net",
+        "gcp" => "accounts.gcp.databricks.com",
+        _ => "accounts.cloud.databricks.com",
+    };
+
+    let token_url = format!(
+        "https://{}/oidc/accounts/{}/v1/token",
+        accounts_host, account_id
+    );
+
+    let client = reqwest::Client::new();
+
+    let token_response = client
+        .post(&token_url)
+        .form(&[
+            ("grant_type", "client_credentials"),
+            ("scope", "all-apis"),
+        ])
+        .basic_auth(client_id, Some(client_secret))
+        .send()
+        .await
+        .map_err(|e| format!("Failed to get OAuth token: {}", e))?;
+
+    if !token_response.status().is_success() {
+        return Err("Failed to authenticate with Databricks".to_string());
+    }
+
+    let token_json: serde_json::Value = token_response
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse token: {}", e))?;
+
+    let access_token = token_json["access_token"]
+        .as_str()
+        .ok_or("No access token in response")?;
+
+    // List metastores
+    let metastores_url = format!(
+        "https://{}/api/2.1/unity-catalog/metastores",
+        accounts_host
+    );
+
+    let metastores_response = client
+        .get(&metastores_url)
+        .bearer_auth(access_token)
+        .send()
+        .await
+        .map_err(|e| format!("Failed to list metastores: {}", e))?;
+
+    if !metastores_response.status().is_success() {
+        return Ok(UCPermissionCheck {
+            metastore: MetastoreInfo {
+                exists: false,
+                metastore_id: None,
+                metastore_name: None,
+                region: Some(region.clone()),
+            },
+            has_create_catalog: true,
+            has_create_external_location: true,
+            has_create_storage_credential: true,
+            can_create_catalog: true,
+            message: "No metastore found in region. A new one will be created.".to_string(),
+        });
+    }
+
+    let metastores_json: serde_json::Value = metastores_response
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse metastores: {}", e))?;
+
+    let metastores = metastores_json["metastores"].as_array();
+    let region_normalized = region.to_lowercase().replace(" ", "").replace("-", "");
+
+    let matching_metastore = metastores.and_then(|arr| {
+        arr.iter().find(|m| {
+            let metastore_region = m["region"].as_str().unwrap_or("");
+            let metastore_region_normalized = metastore_region
+                .to_lowercase()
+                .replace(" ", "")
+                .replace("-", "");
+            metastore_region_normalized == region_normalized
+        })
+    });
+
+    if let Some(metastore) = matching_metastore {
+        let metastore_id = metastore["metastore_id"].as_str().unwrap_or("");
+        let metastore_name = metastore["name"].as_str().unwrap_or("");
+
+        // Check permissions on this metastore
+        let permissions_url = format!(
+            "https://{}/api/2.1/unity-catalog/permissions/metastore/{}",
+            accounts_host, metastore_id
+        );
+
+        let permissions_response = client
+            .get(&permissions_url)
+            .bearer_auth(access_token)
+            .send()
+            .await;
+
+        let (has_create_catalog, has_create_external_location, has_create_storage_credential) =
+            if let Ok(resp) = permissions_response {
+                if resp.status().is_success() {
+                    if let Ok(perm_json) = resp.json::<serde_json::Value>().await {
+                        let assignments = perm_json["privilege_assignments"].as_array();
+                        let mut create_catalog = false;
+                        let mut create_ext_loc = false;
+                        let mut create_storage_cred = false;
+
+                        if let Some(arr) = assignments {
+                            for assignment in arr {
+                                if let Some(privileges) = assignment["privileges"].as_array() {
+                                    for priv_val in privileges {
+                                        let priv_str = priv_val.as_str().unwrap_or("");
+                                        match priv_str {
+                                            "CREATE_CATALOG" => create_catalog = true,
+                                            "CREATE_EXTERNAL_LOCATION" => create_ext_loc = true,
+                                            "CREATE_STORAGE_CREDENTIAL" => {
+                                                create_storage_cred = true
+                                            }
+                                            "ALL_PRIVILEGES" => {
+                                                create_catalog = true;
+                                                create_ext_loc = true;
+                                                create_storage_cred = true;
+                                            }
+                                            _ => {}
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        (create_catalog, create_ext_loc, create_storage_cred)
+                    } else {
+                        (false, false, false)
+                    }
+                } else {
+                    (true, true, true)
+                }
+            } else {
+                (true, true, true)
+            };
+
+        let can_create =
+            has_create_catalog && has_create_external_location && has_create_storage_credential;
+        let message = if can_create {
+            "You have the required permissions to create catalogs.".to_string()
+        } else {
+            let mut missing = Vec::new();
+            if !has_create_catalog {
+                missing.push("CREATE_CATALOG");
+            }
+            if !has_create_storage_credential {
+                missing.push("CREATE_STORAGE_CREDENTIAL");
+            }
+            if !has_create_external_location {
+                missing.push("CREATE_EXTERNAL_LOCATION");
+            }
+            format!(
+                "Missing permissions: {}. Contact your Metastore Admin.",
+                missing.join(", ")
+            )
+        };
+
+        Ok(UCPermissionCheck {
+            metastore: MetastoreInfo {
+                exists: true,
+                metastore_id: Some(metastore_id.to_string()),
+                metastore_name: Some(metastore_name.to_string()),
+                region: Some(region),
+            },
+            has_create_catalog,
+            has_create_external_location,
+            has_create_storage_credential,
+            can_create_catalog: can_create,
+            message,
+        })
+    } else {
+        Ok(UCPermissionCheck {
+            metastore: MetastoreInfo {
+                exists: false,
+                metastore_id: None,
+                metastore_name: None,
+                region: Some(region),
+            },
+            has_create_catalog: true,
+            has_create_external_location: true,
+            has_create_storage_credential: true,
+            can_create_catalog: true,
+            message: "No metastore found in region. A new one will be created.".to_string(),
+        })
+    }
+}
+
+/// Validate Azure identity (account admin) for Databricks access.
+/// Uses Azure CLI to get an Azure AD token, exchanges it for a Databricks token,
+/// and validates account admin access via SCIM API.
+#[tauri::command]
+pub async fn validate_azure_databricks_identity(
+    account_id: String,
+    azure_account_email: String,
+) -> Result<String, String> {
+    // Step 1: Get Azure AD token for Databricks using Azure CLI
+    // Gracefully skip if CLI is not installed (consistent with cloud validation pattern)
+    let az_cli_path = match dependencies::find_azure_cli_path() {
+        Some(path) => path,
+        None => {
+            return Ok(format!(
+                "Azure CLI not installed. Databricks validation skipped for account: {}",
+                azure_account_email
+            ));
+        }
+    };
+    
+    let token_output = std::process::Command::new(&az_cli_path)
+        .args([
+            "account", "get-access-token",
+            "--resource", "2ff814a6-3304-4ab8-85cb-cd0e6f879c1d", // Databricks Azure AD resource ID
+            "--query", "accessToken",
+            "-o", "tsv"
+        ])
+        .output()
+        .map_err(|e| format!("Failed to get Azure AD token: {}", e))?;
+    
+    if !token_output.status.success() {
+        let stderr = String::from_utf8_lossy(&token_output.stderr);
+        return Err(format!("Failed to authenticate with Azure AD: {}", stderr));
+    }
+    
+    let azure_token = String::from_utf8_lossy(&token_output.stdout).trim().to_string();
+    
+    // Step 2: Exchange Azure AD token for Databricks token
+    let client = reqwest::Client::new();
+    let token_url = format!(
+        "https://accounts.azuredatabricks.net/oidc/accounts/{}/v1/token",
+        account_id
+    );
+    
+    let token_response = client
+        .post(&token_url)
+        .form(&[
+            ("grant_type", "urn:ietf:params:oauth:grant-type:jwt-bearer"),
+            ("assertion", &azure_token),
+            ("scope", "all-apis"),
+        ])
+        .send()
+        .await
+        .map_err(|e| format!("Failed to connect to Databricks: {}", e))?;
+    
+    if !token_response.status().is_success() {
+        let status = token_response.status();
+        let error_text = token_response.text().await.unwrap_or_default();
+        
+        if status == reqwest::StatusCode::UNAUTHORIZED || status == reqwest::StatusCode::FORBIDDEN {
+            return Err(format!(
+                "Your Azure account ({}) is not authorized in Databricks Account Console.\n\n\
+                Please add it to your Databricks Account:\n\
+                1. Go to accounts.azuredatabricks.net\n\
+                2. Navigate to User management → Users\n\
+                3. Add '{}' with 'Account admin' role",
+                azure_account_email, azure_account_email
+            ));
+        }
+        
+        return Err(format!(
+            "Authentication failed ({}): {}",
+            status, error_text
+        ));
+    }
+    
+    let token_json: serde_json::Value = token_response
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse token response: {}", e))?;
+    
+    let access_token = token_json["access_token"]
+        .as_str()
+        .ok_or("No access token in response")?;
+    
+    // Step 3: Verify account admin access via SCIM API
+    let users_url = format!(
+        "https://accounts.azuredatabricks.net/api/2.0/accounts/{}/scim/v2/Users?count=1",
+        account_id
+    );
+    
+    let users_response = client
+        .get(&users_url)
+        .bearer_auth(access_token)
+        .send()
+        .await
+        .map_err(|e| format!("Failed to verify account access: {}", e))?;
+    
+    if !users_response.status().is_success() {
+        let status = users_response.status();
+        if status == reqwest::StatusCode::FORBIDDEN || status == reqwest::StatusCode::UNAUTHORIZED {
+            return Err(format!(
+                "Your Azure account ({}) does not have account admin privileges.\n\n\
+                Please grant the 'Account admin' role in Databricks Account Console → User Management.",
+                azure_account_email
+            ));
+        }
+        return Err(format!(
+            "Cannot verify account access ({}). Check your Databricks Account ID.",
+            status
+        ));
+    }
+    
+    Ok(format!("Azure identity validated - Account Admin access confirmed for: {}", azure_account_email))
+}
+

@@ -2,17 +2,13 @@ name: Build Desktop App
 
 on:
   push:
-    branches: [main, master]
-    paths:
-      - 'desktop-app/**'
-      - '.github/workflows/build-desktop.yml'
     tags:
       - 'v*'
-  pull_request:
-    branches: [main, master]
-    paths:
-      - 'desktop-app/**'
   workflow_dispatch:
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: true
 
 env:
   CARGO_TERM_COLOR: always
@@ -55,6 +51,12 @@ jobs:
 
       - name: Add Rust target
         run: rustup target add ${{ matrix.target }}
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: desktop-app/src-tauri
+          key: ${{ matrix.target }}
 
       - name: Install frontend dependencies
         run: npm ci

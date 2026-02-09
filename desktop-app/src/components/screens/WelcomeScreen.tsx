@@ -1,21 +1,16 @@
 import React from 'react';
+import { useWizard } from '../../hooks/useWizard';
 
-interface WelcomeScreenProps {
-  onGetStarted: () => void;
-  onOpenDeploymentsFolder?: () => void;
-}
+const WelcomeScreen: React.FC = () => {
+  const { setScreen, deployment } = useWizard();
 
-const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ 
-  onGetStarted,
-  onOpenDeploymentsFolder 
-}) => {
   return (
     <div className="container">
       <div className="welcome-content">
         <h1 className="gradient" style={{ fontSize: "3em", marginBottom: "20px" }}>
           Databricks Deployer
         </h1>
-        <p style={{ fontSize: "1.3em", color: "#b3b3b3", fontStyle: "italic", textAlign: "left" }}>
+        <p className="subtitle">
           Deploy Databricks workspaces with ease
         </p>
 
@@ -33,7 +28,7 @@ const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
         </div>
 
         <div style={{ marginTop: "50px" }}>
-          <button className="btn btn-large" onClick={onGetStarted}>
+          <button className="btn btn-large" onClick={() => setScreen("cloud-selection")}>
             Get Started →
           </button>
         </div>
@@ -56,23 +51,21 @@ const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
           </div>
         </div>
 
-        {onOpenDeploymentsFolder && (
-          <div style={{ marginTop: "40px" }}>
-            <button 
-              onClick={onOpenDeploymentsFolder}
-              style={{
-                background: "transparent",
-                border: "none",
-                color: "#666",
-                cursor: "pointer",
-                fontSize: "13px",
-                textDecoration: "underline"
-              }}
-            >
-              View previous deployments folder
-            </button>
-          </div>
-        )}
+        <div style={{ marginTop: "40px" }}>
+          <button 
+            onClick={deployment.openDeploymentsFolder}
+            style={{
+              background: "transparent",
+              border: "none",
+              color: "#666",
+              cursor: "pointer",
+              fontSize: "13px",
+              textDecoration: "underline"
+            }}
+          >
+            View previous deployments folder
+          </button>
+        </div>
       </div>
     </div>
   );

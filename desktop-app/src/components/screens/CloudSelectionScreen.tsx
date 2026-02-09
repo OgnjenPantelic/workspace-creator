@@ -1,20 +1,13 @@
 import React from 'react';
 import { CLOUDS, CLOUD_DISPLAY_NAMES } from '../../constants';
+import { useWizard } from '../../hooks/useWizard';
 
-interface CloudSelectionScreenProps {
-  loadingCloud: string | null;
-  onSelectCloud: (cloud: string) => void;
-  onBack: () => void;
-}
+const CloudSelectionScreen: React.FC = () => {
+  const { loadingCloud, selectCloud, goBack } = useWizard();
 
-const CloudSelectionScreen: React.FC<CloudSelectionScreenProps> = ({
-  loadingCloud,
-  onSelectCloud,
-  onBack,
-}) => {
   return (
     <div className="container">
-      <button className="back-btn" onClick={onBack} disabled={!!loadingCloud}>
+      <button className="back-btn" onClick={goBack} disabled={!!loadingCloud}>
         ← Back
       </button>
       <h1>Select Cloud Provider</h1>
@@ -34,7 +27,7 @@ const CloudSelectionScreen: React.FC<CloudSelectionScreenProps> = ({
       <div className="cloud-selection">
         <div 
           className={`cloud-card azure ${loadingCloud ? "disabled" : ""}`}
-          onClick={() => !loadingCloud && onSelectCloud(CLOUDS.AZURE)}
+          onClick={() => !loadingCloud && selectCloud(CLOUDS.AZURE)}
         >
           <div className="cloud-name">Azure</div>
           <div className="cloud-description">
@@ -44,7 +37,7 @@ const CloudSelectionScreen: React.FC<CloudSelectionScreenProps> = ({
 
         <div 
           className={`cloud-card aws ${loadingCloud ? "disabled" : ""}`}
-          onClick={() => !loadingCloud && onSelectCloud(CLOUDS.AWS)}
+          onClick={() => !loadingCloud && selectCloud(CLOUDS.AWS)}
         >
           <div className="cloud-name">AWS</div>
           <div className="cloud-description">
@@ -54,7 +47,7 @@ const CloudSelectionScreen: React.FC<CloudSelectionScreenProps> = ({
 
         <div 
           className={`cloud-card gcp ${loadingCloud ? "disabled" : ""}`}
-          onClick={() => !loadingCloud && onSelectCloud(CLOUDS.GCP)}
+          onClick={() => !loadingCloud && selectCloud(CLOUDS.GCP)}
         >
           <div className="cloud-name">GCP</div>
           <div className="cloud-description">

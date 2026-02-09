@@ -96,11 +96,13 @@ variable "create_new_vnet" {
 variable "vnet_name" {
     description = "The name of the virtual network"
     type        = string
+    default     = ""
 }
 
 variable "vnet_resource_group_name" {
     description = "The name of the VNet resource group"
     type        = string
+    default     = ""
 }
 
 variable "cidr" {
@@ -164,7 +166,7 @@ variable "uc_force_destroy" {
 
 # Databricks authentication type
 variable "databricks_auth_type" {
-  description = "Databricks authentication type: 'oauth-m2m' for service principal, 'databricks-cli' for CLI profile"
+  description = "Databricks authentication type: 'oauth-m2m' for service principal, 'databricks-cli' for CLI profile, 'azure-cli' for Azure identity"
   type        = string
   default     = "oauth-m2m"
 }

@@ -225,6 +225,13 @@ pub fn generate_tfvars(values: &HashMap<String, serde_json::Value>, variables: &
     
     for var in variables {
         if let Some(value) = values.get(&var.name) {
+            // Skip empty strings for required variables (no default)
+            if let serde_json::Value::String(s) = value {
+                if s.trim().is_empty() && var.default.is_none() {
+                    continue;
+                }
+            }
+            
             let var_type = var.var_type.to_lowercase();
             
             let formatted = match value {
@@ -245,6 +252,14 @@ pub fn generate_tfvars(values: &HashMap<String, serde_json::Value>, variables: &
                             format_list(&var.name, &arr)
                         } else if s.trim().is_empty() || s.trim() == "[]" {
                             format!("{} = []", var.name)
+                        } else {
+                            format!("{} = \"{}\"", var.name, s)
+                        }
+                    } else if var_type == "bool" {
+                        // Handle boolean strings - output without quotes
+                        let bool_val = s.to_lowercase();
+                        if bool_val == "true" || bool_val == "false" {
+                            format!("{} = {}", var.name, bool_val)
                         } else {
                             format!("{} = \"{}\"", var.name, s)
                         }

@@ -1,26 +1,18 @@
 import React from 'react';
-import { DependencyStatus } from '../../types';
 import { CLOUDS, CLOUD_DISPLAY_NAMES } from '../../constants';
+import { useWizard } from '../../hooks/useWizard';
 
-interface DependenciesScreenProps {
-  dependencies: Record<string, DependencyStatus>;
-  selectedCloud: string;
-  error: string | null;
-  installingTerraform: boolean;
-  onInstallTerraform: () => void;
-  onContinue: () => void;
-  onBack: () => void;
-}
+const DependenciesScreen: React.FC = () => {
+  const {
+    dependencies,
+    selectedCloud,
+    error,
+    installingTerraform,
+    installTerraform,
+    continueFromDependencies,
+    goBack,
+  } = useWizard();
 
-const DependenciesScreen: React.FC<DependenciesScreenProps> = ({
-  dependencies,
-  selectedCloud,
-  error,
-  installingTerraform,
-  onInstallTerraform,
-  onContinue,
-  onBack,
-}) => {
   const terraformDep = dependencies["terraform"];
   const gitDep = dependencies["git"];
   const canContinue = terraformDep?.installed && gitDep?.installed;
@@ -35,7 +27,7 @@ const DependenciesScreen: React.FC<DependenciesScreenProps> = ({
 
   return (
     <div className="container">
-      <button className="back-btn" onClick={onBack}>
+      <button className="back-btn" onClick={goBack}>
         ← Back
       </button>
       <h1>System Requirements for {CLOUD_DISPLAY_NAMES[selectedCloud] || selectedCloud}</h1>
@@ -62,7 +54,7 @@ const DependenciesScreen: React.FC<DependenciesScreenProps> = ({
             {!terraformDep?.installed && (
               <button
                 className="btn"
-                onClick={onInstallTerraform}
+                onClick={installTerraform}
                 disabled={installingTerraform}
               >
                 {installingTerraform ? (
@@ -92,7 +84,7 @@ const DependenciesScreen: React.FC<DependenciesScreenProps> = ({
           <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
             <span className="dependency-badge required">Required</span>
             {!gitDep?.installed && (
-              <a href={gitDep?.install_url} target="_blank" className="btn btn-secondary btn-small">
+              <a href={gitDep?.install_url} target="_blank" rel="noopener noreferrer" className="btn btn-secondary btn-small">
                 Install Guide
               </a>
             )}
@@ -139,14 +131,14 @@ const DependenciesScreen: React.FC<DependenciesScreenProps> = ({
                 <div className="dependency-version">{databricksCli.version}</div>
               )}
               {!databricksCli?.installed && (
-                <div className="dependency-note">Enables profile-based OAuth authentication</div>
+                <div className="help-text">Enables profile-based OAuth authentication</div>
               )}
             </div>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
             <span className="dependency-badge">Optional</span>
             {!databricksCli?.installed && (
-              <a href={databricksCli?.install_url} target="_blank" className="btn btn-secondary btn-small">
+              <a href={databricksCli?.install_url} target="_blank" rel="noopener noreferrer" className="btn btn-secondary btn-small">
                 Install Guide
               </a>
             )}
@@ -158,7 +150,7 @@ const DependenciesScreen: React.FC<DependenciesScreenProps> = ({
         <div className="alert alert-warning">
           Terraform is required to deploy workspaces. Click "Install" above to automatically
           download and install it, or install it manually from{" "}
-          <a href={terraformDep?.install_url} target="_blank" style={{ color: "#ffb347" }}>
+          <a href={terraformDep?.install_url} target="_blank" rel="noopener noreferrer" style={{ color: "#ffb347" }}>
             terraform.io
           </a>
         </div>
@@ -179,7 +171,7 @@ const DependenciesScreen: React.FC<DependenciesScreenProps> = ({
       </div>
 
       <div style={{ marginTop: "32px" }}>
-        <button className="btn" onClick={onContinue} disabled={!canContinue}>
+        <button className="btn" onClick={continueFromDependencies} disabled={!canContinue}>
           Continue →
         </button>
       </div>

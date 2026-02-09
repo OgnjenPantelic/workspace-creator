@@ -296,14 +296,13 @@ pub fn get_databricks_profiles_for_cloud(cloud: &str) -> Vec<DatabricksProfile> 
                 return false;
             }
             
-            // For AWS and GCP, only allow service principal profiles (with client credentials)
-            // SSO/OAuth profiles don't work for newly created workspaces on AWS/GCP
-            // because there's no cached token for the new workspace URL
-            if (cloud == "aws" || cloud == "gcp") && !p.has_client_credentials {
+            // Only allow service principal profiles (with client credentials)
+            // SSO/OAuth profiles don't work for newly created workspaces because
+            // there's no cached token for the new workspace URL (even with azure_workspace_resource_id)
+            if !p.has_client_credentials {
                 return false;
             }
             
-            // For Azure, allow all profiles (SSO works due to azure_workspace_resource_id)
             true
         })
         .collect::<Vec<_>>();

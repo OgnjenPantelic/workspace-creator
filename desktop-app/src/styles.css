@@ -289,7 +289,7 @@ h3 {
   cursor: pointer;
 }
 
-.aws-status {
+.auth-status {
   padding: 10px 12px;
   background: #1b1b1d;
   border: 1px solid #35353a;
@@ -304,13 +304,7 @@ h3 {
   color: #4ec9b0;
 }
 
-.alert-success {
-  background: rgba(78, 201, 176, 0.1);
-  border: 1px solid #4ec9b0;
-  color: #4ec9b0;
-}
-
-.aws-status .error {
+.auth-status .error {
   color: #f48771;
   font-size: 13px;
 }
@@ -487,6 +481,15 @@ input[type="checkbox"] {
 
 .btn:active {
   transform: translateY(0);
+}
+
+.btn-primary {
+  background: #ff6b35;
+  color: white;
+}
+
+.btn-primary:hover {
+  background: #ff7d4d;
 }
 
 .btn:disabled {
@@ -980,3 +983,486 @@ input[type="checkbox"] {
 ::-webkit-scrollbar-thumb:hover {
   background: #404045;
 }
+
+/* Error Boundary */
+.error-boundary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  padding: 32px;
+}
+
+.error-boundary-content {
+  max-width: 480px;
+  text-align: center;
+  padding: 48px;
+  background: #242426;
+  border: 1px solid #35353a;
+  border-radius: 12px;
+}
+
+/* ========================================
+   Additional utility classes for App.tsx
+   ======================================== */
+
+/* Form panels and sections */
+.form-panel {
+  padding: 16px;
+  background: #1e1e20;
+  border-radius: 8px;
+}
+
+.form-panel-bordered {
+  border: 1px solid #444;
+}
+
+.form-panel-blue {
+  border: 1px solid #3b82f6;
+  background: rgba(59, 130, 246, 0.1);
+}
+
+.form-panel-header {
+  margin-bottom: 16px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.form-panel-header-text {
+  color: #aaa;
+}
+
+/* Loading states */
+.alert-loading {
+  background: rgba(59, 130, 246, 0.15);
+  border-color: #3b82f6;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* Flex utilities */
+.flex-row {
+  display: flex;
+  flex-direction: row;
+}
+
+.flex-col {
+  display: flex;
+  flex-direction: column;
+}
+
+.flex-center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.flex-between {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.gap-8 { gap: 8px; }
+.gap-12 { gap: 12px; }
+.gap-16 { gap: 16px; }
+.gap-20 { gap: 20px; }
+
+/* Margin utilities */
+.mt-8 { margin-top: 8px; }
+.mt-12 { margin-top: 12px; }
+.mt-16 { margin-top: 16px; }
+.mt-20 { margin-top: 20px; }
+.mt-24 { margin-top: 24px; }
+.mt-32 { margin-top: 32px; }
+.mb-8 { margin-bottom: 8px; }
+.mb-12 { margin-bottom: 12px; }
+.mb-16 { margin-bottom: 16px; }
+.mb-20 { margin-bottom: 20px; }
+
+/* Padding utilities */
+.pt-16 { padding-top: 16px; }
+.pb-16 { padding-bottom: 16px; }
+
+/* Border utilities */
+.border-top { border-top: 1px solid #333; }
+.border-bottom { border-bottom: 1px solid #333; }
+
+/* Text utilities */
+.text-muted { color: #aaa; }
+.text-secondary { color: #888; }
+.text-success { color: #4ade80; }
+.text-warning { color: #f59e0b; }
+.text-error { color: #f87171; }
+.text-sm { font-size: 13px; }
+.text-xs { font-size: 12px; }
+.text-center { text-align: center; }
+.whitespace-pre-line { white-space: pre-line; }
+.font-medium { font-weight: 500; }
+.font-semibold { font-weight: 600; }
+
+/* Toggle tabs for SA setup mode */
+.toggle-tabs {
+  display: flex;
+  gap: 0;
+  margin-bottom: 12px;
+  margin-top: 8px;
+}
+
+.toggle-tab {
+  padding: 8px 16px;
+  border: 1px solid #444;
+  background: transparent;
+  color: #aaa;
+  cursor: pointer;
+  font-size: 13px;
+  transition: all 0.2s ease;
+}
+
+.toggle-tab:first-child {
+  border-right: none;
+  border-radius: 6px 0 0 6px;
+}
+
+.toggle-tab:last-child {
+  border-radius: 0 6px 6px 0;
+}
+
+.toggle-tab.active {
+  background: #3b82f6;
+  color: #fff;
+}
+
+.toggle-tab:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+/* Link button (text link that looks like button) */
+.btn-link {
+  background: none;
+  border: none;
+  color: #ff6b35;
+  cursor: pointer;
+  text-decoration: underline;
+  font-size: inherit;
+  padding: 0;
+}
+
+.btn-link:hover {
+  color: #ff8c5a;
+}
+
+/* Workspace completion card */
+.workspace-card {
+  background: linear-gradient(135deg, #1a3a1a 0%, #0d2610 100%);
+  border: 1px solid #2d5a2d;
+  border-radius: 12px;
+  padding: 24px;
+  margin-bottom: 20px;
+  width: 100%;
+  text-align: center;
+}
+
+.workspace-card-label {
+  color: #888;
+  font-size: 12px;
+  margin-bottom: 8px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.workspace-card-url {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.workspace-card-url a {
+  color: #4ade80;
+  font-size: 16px;
+  font-weight: 500;
+  word-break: break-all;
+}
+
+/* Info card for deployment completion */
+.info-card {
+  background: #1e1e1e;
+  border: 1px solid #333;
+  border-radius: 8px;
+  padding: 16px 20px;
+  margin-bottom: 20px;
+  width: 100%;
+}
+
+.info-card-content {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.info-card-icon {
+  font-size: 20px;
+}
+
+.info-card-title {
+  color: #e0e0e0;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.info-card-subtitle {
+  color: #888;
+  font-size: 13px;
+}
+
+/* Permission warning dialog */
+.permission-warning {
+  margin-top: 24px;
+}
+
+.permission-warning h3 {
+  margin: 0 0 12px 0;
+  font-size: 16px;
+}
+
+.permission-warning ul {
+  margin: 0 0 12px 0;
+  padding-left: 20px;
+  font-size: 13px;
+}
+
+.permission-warning .disclaimer {
+  margin: 0 0 16px 0;
+  font-size: 12px;
+  color: #888;
+}
+
+.permission-warning-title {
+  margin: 0 0 12px 0;
+  font-size: 16px;
+}
+
+.permission-warning-list {
+  margin: 0 0 12px 0;
+  padding-left: 20px;
+  font-size: 13px;
+}
+
+.permission-warning-disclaimer {
+  margin: 0 0 16px 0;
+  font-size: 12px;
+  color: #888;
+}
+
+.permission-warning-acknowledge {
+  display: flex;
+  align-items: center;
+  margin: 0;
+}
+
+.permission-warning-acknowledge input[type="checkbox"] {
+  margin-right: 8px;
+}
+
+.mt-24 { margin-top: 24px; }
+
+/* Copy button */
+.btn-copy {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-size: 14px;
+  padding: 4px;
+}
+
+/* Delete/cleanup button */
+.btn-ghost {
+  background: transparent;
+  border: 1px solid #666;
+  color: #888;
+  font-size: 13px;
+  padding: 8px 16px;
+}
+
+.btn-ghost:hover {
+  border-color: #888;
+  color: #aaa;
+}
+
+/* Metastore status cards */
+.metastore-card {
+  padding: 12px 16px;
+  border-radius: 6px;
+  border-left: 3px solid;
+}
+
+.metastore-card-exists {
+  background: rgba(46, 204, 113, 0.1);
+  border-left-color: #2ecc71;
+}
+
+.metastore-card-new {
+  background: rgba(52, 152, 219, 0.1);
+  border-left-color: #3498db;
+}
+
+.metastore-card-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.metastore-card-details {
+  font-size: 0.9em;
+  color: #aaa;
+  margin-left: 24px;
+}
+
+.metastore-card-id {
+  font-size: 0.85em;
+  color: #666;
+  margin-top: 2px;
+}
+
+/* GCP Service Account creation progress */
+.sa-creation-progress {
+  margin-top: 12px;
+  padding: 12px;
+  background: rgba(59, 130, 246, 0.15);
+  border-radius: 6px;
+  font-size: 13px;
+}
+
+.sa-creation-progress-title {
+  margin-bottom: 8px;
+  font-weight: 500;
+}
+
+.sa-creation-progress ul {
+  margin: 0;
+  padding-left: 20px;
+  color: #aaa;
+  font-size: 12px;
+}
+
+/* Actions row */
+.actions-row {
+  margin-top: 24px;
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+}
+
+/* Full width container for deployment completion */
+.completion-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  max-width: 600px;
+  margin: 0 auto;
+}
+
+/* Secondary actions row */
+.secondary-actions {
+  display: flex;
+  gap: 12px;
+  width: 100%;
+  margin-bottom: 20px;
+}
+
+.secondary-actions .btn {
+  flex: 1;
+}
+
+/* Dialog/Modal styles */
+.dialog-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.dialog {
+  background-color: #000000;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 24px;
+  max-width: 500px;
+  width: 90%;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+}
+
+.dialog h3 {
+  margin: 0 0 16px 0;
+  color: var(--text);
+}
+
+.dialog p {
+  margin: 0 0 16px 0;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.dialog .help-text {
+  font-size: 0.9em;
+  color: var(--text-muted);
+}
+
+.dialog-buttons {
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+  margin-top: 24px;
+}
+
+.dialog-buttons button {
+  min-width: 120px;
+  padding: 10px 20px;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.dialog-buttons button.primary {
+  background: #ff6b35;
+  color: white;
+  border: none;
+}
+
+.dialog-buttons button.primary:hover {
+  background: #e85a2a;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(255, 107, 53, 0.3);
+}
+
+.dialog-buttons button.secondary {
+  background: transparent;
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+
+.dialog-buttons button.secondary:hover {
+  background: var(--hover-bg, rgba(255, 255, 255, 0.05));
+  border-color: var(--text-secondary);
+}
+
+.dialog-buttons button:active {
+  transform: translateY(0);
+}
+

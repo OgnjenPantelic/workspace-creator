@@ -31,6 +31,7 @@ pub fn run() {
             commands::save_configuration,
             commands::run_terraform_command,
             commands::get_deployment_status,
+            commands::reset_deployment_status,
             commands::cancel_deployment,
             commands::rollback_deployment,
             commands::get_cloud_credentials,
@@ -54,6 +55,12 @@ pub fn run() {
             commands::check_azure_permissions,
             commands::validate_gcp_credentials,
             commands::check_gcp_permissions,
+            commands::validate_gcp_databricks_access,
+            commands::validate_gcp_databricks_access_with_key,
+            commands::validate_databricks_profile,
+            commands::validate_azure_databricks_identity,
+            commands::create_gcp_service_account,
+            commands::add_service_account_to_databricks,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
