@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { getDatabricksValidationCommand, validateDatabricksCredentials } from "../../utils/databricksValidation";
-import { CloudCredentials, DatabricksProfile } from "../../types";
+import { DatabricksProfile } from "../../types";
 
 const mockInvoke = vi.mocked(invoke);
 

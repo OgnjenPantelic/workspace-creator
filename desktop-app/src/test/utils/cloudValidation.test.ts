@@ -276,7 +276,7 @@ describe("cloudValidation", () => {
 
       it("blocks when subscription ID is missing", async () => {
         const result = await validateAzureCredentials({
-          authMode: "servicePrincipal",
+          authMode: "service_principal",
           account: null,
           credentials: {
             cloud: "azure",
