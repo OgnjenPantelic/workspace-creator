@@ -183,19 +183,15 @@ export function DatabricksCredentialsScreen() {
         <div className="form-section">
           {isUsingServiceAccountKey ? (
             <Alert type="info" style={{ marginBottom: "20px" }}>
-              <strong>Service Account Key Mode:</strong> Your service account (<code>{credentials.gcp_service_account_email || "from JSON key"}</code>) will be validated for Databricks account access.
-              <div style={{ marginTop: "8px", fontSize: "12px" }}>
-                Ensure it has been added to the{" "}
-                <a href="https://accounts.gcp.databricks.com" target="_blank" rel="noopener noreferrer" style={{ color: "#ff6b35" }}>
-                  Databricks Account Console
-                </a>{" "}
-                with account admin privileges.
-              </div>
+              <strong>Service account key mode:</strong> Your service account (<code>{credentials.gcp_service_account_email || "from JSON key"}</code>) will be validated for Databricks account access. Ensure it has been added to the{" "}
+              <a href="https://accounts.gcp.databricks.com" target="_blank" rel="noopener noreferrer" style={{ color: "#ff6b35" }}>
+                Databricks Account Console
+              </a>{" "}
+              with account admin privileges.
             </Alert>
           ) : (
             <Alert type="info" style={{ marginBottom: "20px" }}>
-              <strong>GCP Authentication:</strong> Your GCP service account ({credentials.gcp_service_account_email || "configured in previous step"}) will be used to authenticate with Databricks. 
-              Make sure this service account has been added to your Databricks Account Console with account admin privileges.
+              <strong>GCP authentication:</strong> Your GCP service account ({credentials.gcp_service_account_email || "configured in previous step"}) will be used to authenticate with Databricks. Make sure this service account has been added to your Databricks Account Console with account admin privileges.
             </Alert>
           )}
 
@@ -215,7 +211,7 @@ export function DatabricksCredentialsScreen() {
               <a href="https://accounts.gcp.databricks.com" target="_blank" rel="noopener noreferrer" style={{ color: "#ff6b35" }}>
                 Databricks Account Console
               </a>
-              . Open your top-right user menu; you'll see a copy button for your Account ID.
+              . Open your top-right user menu to find a copy button for your Account ID.
             </div>
           </div>
         </div>
@@ -257,14 +253,11 @@ export function DatabricksCredentialsScreen() {
 
         <div className="form-section">
           <Alert type="info" style={{ marginBottom: "20px" }}>
-            <strong>Azure Identity Authentication:</strong> Your Azure account (<code>{credentials.azure_account_email}</code>) will be used to authenticate with Databricks.
-            <div style={{ marginTop: "8px", fontSize: "12px" }}>
-              Ensure your account has been added to the{" "}
-              <a href="https://accounts.azuredatabricks.net" target="_blank" rel="noopener noreferrer" style={{ color: "#ff6b35" }}>
-                Databricks Account Console
-              </a>{" "}
-              with account admin privileges.
-            </div>
+            <strong>Azure identity authentication:</strong> Your Azure account (<code>{credentials.azure_account_email}</code>) will be used to authenticate with Databricks. Ensure your account has been added to the{" "}
+            <a href="https://accounts.azuredatabricks.net" target="_blank" rel="noopener noreferrer" style={{ color: "#ff6b35" }}>
+              Databricks Account Console
+            </a>{" "}
+            with account admin privileges.
           </Alert>
 
           <div className="form-group">
@@ -283,7 +276,7 @@ export function DatabricksCredentialsScreen() {
               <a href="https://accounts.azuredatabricks.net" target="_blank" rel="noopener noreferrer" style={{ color: "#ff6b35" }}>
                 Databricks Account Console
               </a>
-              . Open your top-right user menu; you'll see a copy button for your Account ID.
+              . Open your top-right user menu to find a copy button for your Account ID.
             </div>
           </div>
         </div>
@@ -349,8 +342,7 @@ export function DatabricksCredentialsScreen() {
             {!showAddSpProfileForm && (
               <>
                 <div className="alert alert-info" style={{ marginTop: "16px", fontSize: "13px" }}>
-                  <strong>Note:</strong> Only service principal profiles are supported. 
-                  SSO profiles authenticate per-workspace and cannot automatically access newly created workspaces using the account-level profile.
+                  <strong>Note:</strong> Only service principal profiles are supported. SSO profiles are tied to specific workspaces and won't work with newly created workspaces.
                 </div>
                 
                 {showExistingProfiles ? (
@@ -370,7 +362,7 @@ export function DatabricksCredentialsScreen() {
                       ))}
                     </select>
                     <div className="help-text">
-                      Account-level profiles for {selectedCloud === CLOUDS.AZURE ? "Azure" : selectedCloud === CLOUDS.GCP ? "GCP" : "AWS"} Databricks
+                      Account-level profiles for {selectedCloud === CLOUDS.AZURE ? "Azure" : selectedCloud === CLOUDS.GCP ? "GCP" : "AWS"} Databricks.
                     </div>
                   </div>
                 ) : (
@@ -467,19 +459,19 @@ export function DatabricksCredentialsScreen() {
                   )}
                 </button>
                 <div className="help-text" style={{ marginTop: "8px" }}>
-                  Creates a new profile in ~/.databrickscfg with the service principal credentials.
+                  Creates a new profile in <code>~/.databrickscfg</code> with the service principal credentials.
                 </div>
               </div>
             )}
             
             {!databricksCli?.installed && !showExistingProfiles && (
-              <Alert type="warning" style={{ marginTop: "16px" }}>
-                Databricks CLI is not installed. Install it to use profile-based authentication, or select "Enter Credentials Manually" above.
-                <br /><br />
-                <a href={databricksCli?.install_url} target="_blank" rel="noopener noreferrer" style={{ color: "#ff6b35" }}>
-                  Install Guide
-                </a>
-              </Alert>
+            <Alert type="warning" style={{ marginTop: "16px" }}>
+              Databricks CLI is not installed. Install it to use profile-based authentication, or select "Use Service Principal Credentials" above.
+              <br /><br />
+              <a href={databricksCli?.install_url} target="_blank" rel="noopener noreferrer" style={{ color: "#ff6b35" }}>
+                Install Guide
+              </a>
+            </Alert>
             )}
           </>
         )}
@@ -510,9 +502,9 @@ export function DatabricksCredentialsScreen() {
                 onChange={(e) => handleCredentialChange("databricks_account_id", e.target.value)}
                 placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
               />
-              <div className="help-text">
-                Found in Databricks Account Console. Open your top‑right user menu; you'll see a copy button for your Account ID there.
-              </div>
+            <div className="help-text">
+              Found in Databricks Account Console. Open your top-right user menu to find a copy button for your Account ID.
+            </div>
             </div>
 
             <div className="two-column">
@@ -528,7 +520,7 @@ export function DatabricksCredentialsScreen() {
                   placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
                 />
                 <div className="help-text">
-                  Service Principal's Application ID
+                  Service principal's application ID.
                 </div>
               </div>
               <div className="form-group">
@@ -540,15 +532,13 @@ export function DatabricksCredentialsScreen() {
                   placeholder="Enter service principal secret"
                 />
                 <div className="help-text">
-                  Service Principal's OAuth secret
+                  Service principal's OAuth secret.
                 </div>
               </div>
             </div>
 
             <Alert type="info">
-              <strong>Don't have a service principal?</strong> In the Databricks Account Console, go to 
-              User Management → Service Principals → Add service principal. Then generate an OAuth secret 
-              and grant it account admin role.
+              <strong>Don't have a service principal?</strong> In the Databricks Account Console, go to User Management → Service Principals → Add service principal. Then generate an OAuth secret and grant it account admin role.
             </Alert>
           </>
         )}

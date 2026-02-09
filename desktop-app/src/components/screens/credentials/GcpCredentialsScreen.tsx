@@ -344,7 +344,7 @@ export function GcpCredentialsScreen() {
         {gcpAuthMode === "adc" && (
           <>
             <Alert type="info" style={{ marginBottom: "16px", fontSize: "13px" }}>
-              <strong>Getting started:</strong> Run <code>gcloud auth login</code> to authenticate, then click <strong>Verify</strong>. A Service Account with impersonation is also required — you can set one up below.
+              <strong>Getting started:</strong> Run <code>gcloud auth login</code> to authenticate, then click <strong>Verify</strong>. You'll also need to set up a service account with impersonation using the options below.
             </Alert>
             
             <div className="form-group">
@@ -360,7 +360,7 @@ export function GcpCredentialsScreen() {
                   <span className="success">Credentials validated</span>
                 )}
                 {!gcpValidation && !gcpAuthError && !gcpLoading && (
-                  <span style={{ color: "#888" }}>Click Verify to check credentials</span>
+                  <span style={{ color: "#888" }}>Click Verify to check credentials.</span>
                 )}
               </div>
               <div style={{ marginTop: "8px", display: "flex", gap: "8px" }}>
@@ -521,7 +521,7 @@ export function GcpCredentialsScreen() {
                           }}
                         >
                           <div style={{ fontSize: "13px", color: "#aaa", marginBottom: "12px" }}>
-                            To use an existing service account, configure impersonation via CLI:
+                            To use an existing service account, configure impersonation via the gcloud CLI:
                           </div>
                           <code style={{ 
                             display: "block",
@@ -563,9 +563,9 @@ export function GcpCredentialsScreen() {
                               <div style={{ fontSize: "13px", color: "#ccc", marginBottom: "12px" }}>
                                 This will:
                                 <ol style={{ margin: "4px 0 0 0", paddingLeft: "20px" }}>
-                                  <li>Create a new service account in your GCP project</li>
-                                  <li>Create a custom role with required permissions and assign it to the service account</li>
-                                  <li>Configure impersonation in gcloud so the service account can be used for deployment</li>
+                                  <li>Create a new service account in your GCP project.</li>
+                                  <li>Create a custom role with required permissions and assign it to the service account.</li>
+                                  <li>Configure impersonation in gcloud so the service account can be used for deployment.</li>
                                 </ol>
                               </div>
                               <button
@@ -595,7 +595,7 @@ export function GcpCredentialsScreen() {
                                   disabled={gcpLoading || creatingServiceAccount}
                                 />
                                 <div className="help-text" style={{ fontSize: "11px", marginTop: "2px" }}>
-                                  6-30 characters, lowercase letters, digits, and hyphens only
+                                  6-30 characters, lowercase letters, digits, and hyphens only.
                                 </div>
                               </div>
                               
@@ -640,11 +640,11 @@ export function GcpCredentialsScreen() {
                                     Setting up service account...
                                   </div>
                                   <ul style={{ margin: 0, paddingLeft: "20px", color: "#aaa", fontSize: "12px" }}>
-                                    <li>Creating service account in GCP</li>
-                                    <li>Creating custom role with required permissions</li>
-                                    <li>Granting permissions to service account</li>
-                                    <li>Granting you permission to impersonate</li>
-                                    <li>Waiting for IAM propagation (can take up to 2 minutes)</li>
+                                    <li>Creating service account in GCP.</li>
+                                    <li>Creating custom role with required permissions.</li>
+                                    <li>Granting permissions to service account.</li>
+                                    <li>Granting you permission to impersonate.</li>
+                                    <li>Waiting for IAM propagation (can take up to 2 minutes).</li>
                                   </ul>
                                 </div>
                               )}
@@ -684,7 +684,7 @@ export function GcpCredentialsScreen() {
                 onChange={(e) => handleCredentialChange("gcp_project_id", e.target.value)}
                 placeholder="my-gcp-project"
               />
-              <div className="help-text">The GCP project where resources will be deployed</div>
+              <div className="help-text">The GCP project where resources will be deployed.</div>
             </div>
             
             <div className="form-group">
@@ -713,7 +713,7 @@ export function GcpCredentialsScreen() {
                 style={{ fontFamily: "monospace", fontSize: "12px" }}
               />
               <div className="help-text">
-                Download from Google Cloud Console → IAM & Admin → Service Accounts → Keys
+                Download from Google Cloud Console → IAM & Admin → Service Accounts → Keys.
               </div>
             </div>
           </>

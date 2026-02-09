@@ -303,7 +303,7 @@ export function ConfigurationScreen() {
                         }}
                         className={formSubmitAttempted && formValidation.missingFields.includes(variable.name) ? "input-error" : ""}
                       >
-                        <option value="">-- Select existing or enter below --</option>
+                        <option value="">Select existing or create new below</option>
                         {azureResourceGroups.map((rg) => (
                           <option key={rg.name} value={rg.name}>
                             {rg.name} ({rg.location})

@@ -118,9 +118,13 @@ pub fn find_databricks_cli_path() -> Option<PathBuf> {
             "/usr/local/bin/databricks",
             "/opt/homebrew/bin/databricks",
             "/usr/bin/databricks",
+            "/bin/databricks",
+            "/opt/local/bin/databricks",
+            "/snap/bin/databricks",
         ],
         home_relative_paths: &[
-            ".local/bin/databricks",  // pip install location
+            ".local/bin/databricks",  // pip install location on Linux/macOS
+            ".databricks/bin/databricks", // Databricks installer location
         ],
         env_var_paths: &[
             ("LOCALAPPDATA", "Programs/databricks/databricks.exe"),
@@ -336,6 +340,7 @@ pub fn find_git_path() -> Option<PathBuf> {
             "/usr/bin/git",
             "/usr/local/bin/git",
             "/opt/homebrew/bin/git",
+            "/opt/local/bin/git",
         ],
         home_relative_paths: &[],
         env_var_paths: &[],
@@ -395,8 +400,11 @@ pub fn find_terraform_path() -> Option<PathBuf> {
             "/usr/bin/terraform",
             "/bin/terraform",
             "/opt/local/bin/terraform",
+            "/snap/bin/terraform",
         ],
-        home_relative_paths: &[],
+        home_relative_paths: &[
+            ".local/bin/terraform",  // manual install to ~/.local/bin
+        ],
         env_var_paths: &[
             ("LOCALAPPDATA", "Programs/Terraform/terraform.exe"),
         ],
@@ -446,8 +454,11 @@ pub fn find_aws_cli_path() -> Option<PathBuf> {
             "/bin/aws",
             "/opt/local/bin/aws",
             "/Library/Frameworks/Python.framework/Versions/Current/bin/aws",
+            "/snap/bin/aws",
         ],
-        home_relative_paths: &[],
+        home_relative_paths: &[
+            ".local/bin/aws",  // pip install --user location
+        ],
         env_var_paths: &[],
     };
     find_cli_path(&CONFIG)
@@ -489,8 +500,12 @@ pub fn find_azure_cli_path() -> Option<PathBuf> {
             "/usr/bin/az",
             "/bin/az",
             "/opt/local/bin/az",
+            "/opt/az/bin/az",  // Linux apt install location
         ],
-        home_relative_paths: &[],
+        home_relative_paths: &[
+            ".local/bin/az",  // pip install --user location
+            "bin/az",         // some Linux installs
+        ],
         env_var_paths: &[],
     };
     find_cli_path(&CONFIG)
@@ -534,12 +549,18 @@ pub fn find_gcloud_cli_path() -> Option<PathBuf> {
             "/usr/bin/gcloud",
             "/bin/gcloud",
             "/opt/local/bin/gcloud",
+            "/Applications/google-cloud-sdk/bin/gcloud",  // macOS .pkg / extracted install
+            "/snap/bin/gcloud",                            // Linux snap
+            "/snap/google-cloud-sdk/current/bin/gcloud",   // Linux snap (direct)
         ],
         home_relative_paths: &[
-            "google-cloud-sdk/bin/gcloud",
-            "AppData/Local/Google/Cloud SDK/google-cloud-sdk/bin/gcloud.cmd",
+            "google-cloud-sdk/bin/gcloud",                 // Default interactive install (~/google-cloud-sdk)
+            ".local/google-cloud-sdk/bin/gcloud",          // Alternative user install
+            "AppData/Local/Google/Cloud SDK/google-cloud-sdk/bin/gcloud.cmd", // Windows per-user install
         ],
-        env_var_paths: &[],
+        env_var_paths: &[
+            ("LOCALAPPDATA", "Google/Cloud SDK/google-cloud-sdk/bin/gcloud.cmd"),
+        ],
     };
     find_cli_path(&CONFIG)
 }

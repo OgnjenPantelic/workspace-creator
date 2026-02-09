@@ -103,10 +103,10 @@ const DependenciesScreen: React.FC = () => {
               {!cloudCliDep?.installed && (
                 <div className="dependency-note">
                   {selectedCloud === CLOUDS.AWS 
-                    ? "Enables profile-based authentication and SSO"
+                    ? "Enables profile-based authentication and SSO."
                     : selectedCloud === CLOUDS.AZURE 
-                      ? "Enables interactive login and profile-based authentication"
-                      : "Enables interactive login and profile-based authentication"}
+                      ? "Enables interactive login and profile-based authentication."
+                      : "Enables interactive login and profile-based authentication."}
                 </div>
               )}
             </div>
@@ -131,7 +131,7 @@ const DependenciesScreen: React.FC = () => {
                 <div className="dependency-version">{databricksCli.version}</div>
               )}
               {!databricksCli?.installed && (
-                <div className="help-text">Enables profile-based OAuth authentication</div>
+                <div className="help-text">Enables profile-based OAuth authentication.</div>
               )}
             </div>
           </div>
@@ -146,29 +146,26 @@ const DependenciesScreen: React.FC = () => {
         </div>
       </div>
 
-      {!terraformDep?.installed && (
-        <div className="alert alert-warning">
-          Terraform is required to deploy workspaces. Click "Install" above to automatically
-          download and install it, or install it manually from{" "}
-          <a href={terraformDep?.install_url} target="_blank" rel="noopener noreferrer" style={{ color: "#ffb347" }}>
-            terraform.io
-          </a>
-        </div>
-      )}
+        {!terraformDep?.installed && (
+          <div className="alert alert-warning">
+            Terraform is required to deploy workspaces. Click "Install" above to automatically download and install it, or install it manually from{" "}
+            <a href={terraformDep?.install_url} target="_blank" rel="noopener noreferrer" style={{ color: "#ffb347" }}>
+              terraform.io
+            </a>.
+          </div>
+        )}
 
-      <div className="alert alert-info">
-        <strong>Optional tools:</strong>
-        <ul style={{ margin: "8px 0 0 0", paddingLeft: "20px", fontSize: "14px" }}>
-          <li>
-            <strong>{cloudCliName}</strong>: If installed, credentials will be auto-detected. 
-            Otherwise, you can enter them manually in the next steps.
-          </li>
-          <li>
-            <strong>Databricks CLI</strong>: If installed, enables profile-based OAuth authentication. 
-            Otherwise, you can use service principal credentials.
-          </li>
-        </ul>
-      </div>
+        <div className="alert alert-info">
+          <strong>Optional tools:</strong>
+          <ul style={{ margin: "8px 0 0 0", paddingLeft: "20px", fontSize: "14px" }}>
+            <li>
+              <strong>{cloudCliName}</strong>: If installed, credentials will be auto-detected. Otherwise, you can enter them manually in the next steps.
+            </li>
+            <li>
+              <strong>Databricks CLI</strong>: If installed, enables profile-based OAuth authentication. Otherwise, you can use service principal credentials.
+            </li>
+          </ul>
+        </div>
 
       <div style={{ marginTop: "32px" }}>
         <button className="btn" onClick={continueFromDependencies} disabled={!canContinue}>

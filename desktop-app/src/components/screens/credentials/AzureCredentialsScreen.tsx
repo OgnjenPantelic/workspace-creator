@@ -81,9 +81,9 @@ export function AzureCredentialsScreen() {
             <Alert type="info" style={{ marginBottom: "16px" }}>
               <strong>How to set up Azure CLI:</strong>
               <ol style={{ margin: "8px 0 0 0", paddingLeft: "20px", fontSize: "13px" }}>
-                <li>Install the <a href="https://docs.microsoft.com/en-us/cli/azure/install-azure-cli" target="_blank" rel="noopener noreferrer" style={{ color: "#ff6b35" }}>Azure CLI</a></li>
-                <li>Run <code>az login</code> to authenticate</li>
-                <li>Click <strong>Verify</strong> below to detect your subscriptions</li>
+                <li>Install the <a href="https://docs.microsoft.com/en-us/cli/azure/install-azure-cli" target="_blank" rel="noopener noreferrer" style={{ color: "#ff6b35" }}>Azure CLI</a>.</li>
+                <li>Run <code>az login</code> to authenticate.</li>
+                <li>Click <strong>Verify</strong> below to detect your subscriptions.</li>
               </ol>
             </Alert>
             
@@ -100,7 +100,7 @@ export function AzureCredentialsScreen() {
                   <span className="error">{azureAuthError}</span>
                 )}
                 {!azureAccount && !azureAuthError && !azureLoading && (
-                  <span style={{ color: "#888" }}>Click Verify or Login to check credentials</span>
+                  <span style={{ color: "#888" }}>Click Verify or Login to check credentials.</span>
                 )}
               </div>
               <div style={{ marginTop: "8px", display: "flex", gap: "8px" }}>
@@ -137,7 +137,7 @@ export function AzureCredentialsScreen() {
                     </option>
                   ))}
                 </select>
-                <div className="help-text">Select the Azure subscription to deploy resources to</div>
+                <div className="help-text">Select the Azure subscription to deploy resources to.</div>
               </div>
             )}
 
@@ -154,11 +154,11 @@ export function AzureCredentialsScreen() {
         {azureAuthMode === "service_principal" && (
           <>
             <Alert type="info" style={{ marginBottom: "16px" }}>
-              <strong>How to create a Service Principal:</strong>
+              <strong>How to create a service principal:</strong>
               <ol style={{ margin: "8px 0 0 0", paddingLeft: "20px", fontSize: "13px" }}>
-                <li>Go to <a href="https://portal.azure.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade" target="_blank" rel="noopener noreferrer" style={{ color: "#ff6b35" }}>Azure Portal → App Registrations</a> and create a new registration</li>
-                <li>Note the Application (Client) ID and Directory (Tenant) ID</li>
-                <li>Under Certificates & Secrets, create a new client secret</li>
+                <li>Go to <a href="https://portal.azure.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade" target="_blank" rel="noopener noreferrer" style={{ color: "#ff6b35" }}>Azure Portal → App Registrations</a> and create a new registration.</li>
+                <li>Note the Application (Client) ID and Directory (Tenant) ID.</li>
+                <li>Under Certificates & Secrets, create a new client secret.</li>
               </ol>
               <p style={{ margin: "8px 0 0 0", fontSize: "12px", color: "#ffb347" }}>
                 ⚠️ Service principal credentials require manual rotation. Use Azure CLI when possible.
@@ -176,7 +176,7 @@ export function AzureCredentialsScreen() {
                   onChange={(e) => handleCredentialChange("azure_tenant_id", e.target.value)}
                   placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
                 />
-                <div className="help-text">Found in Azure Portal → Microsoft Entra ID</div>
+                <div className="help-text">Found in Azure Portal → Microsoft Entra ID.</div>
               </div>
               <div className="form-group">
                 <label>Subscription ID *</label>
@@ -189,7 +189,7 @@ export function AzureCredentialsScreen() {
                   onChange={(e) => handleCredentialChange("azure_subscription_id", e.target.value)}
                   placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
                 />
-                <div className="help-text">Found in Azure Portal → Subscriptions</div>
+                <div className="help-text">Found in Azure Portal → Subscriptions.</div>
               </div>
             </div>
             <div className="two-column">

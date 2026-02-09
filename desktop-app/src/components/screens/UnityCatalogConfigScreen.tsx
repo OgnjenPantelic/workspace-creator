@@ -195,9 +195,9 @@ export function UnityCatalogConfigScreen() {
                 }))}
                 placeholder="e.g., main_catalog"
               />
-              <div className="help-text">
-                Lowercase letters, numbers, and underscores only
-              </div>
+            <div className="help-text">
+              Lowercase letters, numbers, and underscores only.
+            </div>
               {selectedCloud === "gcp" && (
                 <div className="warning-box" style={{ 
                   marginTop: "8px", 
@@ -264,7 +264,7 @@ export function UnityCatalogConfigScreen() {
         </button>
         {ucConfig.enabled && !ucPermissionCheck?.can_create_catalog && ucPermissionCheck?.metastore.exists && (
           <p style={{ marginTop: "12px", color: "#e67e22", fontSize: "0.9em" }}>
-            Warning: You may not have sufficient permissions. The workspace will be created, but catalog creation may fail.
+            You may not have sufficient permissions. The workspace will be created, but catalog creation may fail.
           </p>
         )}
         {!ucConfig.enabled && (

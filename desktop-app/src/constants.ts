@@ -91,7 +91,7 @@ export const VARIABLE_DESCRIPTION_OVERRIDES: Record<string, string> = {
   // Cloud-specific - GCP
   google_region: "GCP region where your Databricks workspace will be deployed.",
   google_project_name: "GCP project ID for workspace resources.",
-  google_service_account_email: "Service account email used for authentication. Must have Owner role and be added to Databricks account console with admin role.",
+  google_service_account_email: "Service account email used for authentication. Must have Owner role and be added to Databricks Account Console with admin role.",
   tags: "Optional key-value pairs to tag/label all created resources for cost tracking and organization.",
   // Network - Azure
   create_new_vnet: "Enable to create a new VNet, or disable to use an existing VNet. New subnets will be created in either case.",
