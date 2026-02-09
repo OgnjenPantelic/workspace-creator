@@ -1,0 +1,2 @@
+# Map cursor agent to /dev/null (hide from contributors)
+# This ensures cursoragent doesn't appear in GitHub's contributor list
