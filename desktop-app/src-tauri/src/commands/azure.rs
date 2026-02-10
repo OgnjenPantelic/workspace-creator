@@ -197,6 +197,116 @@ pub fn get_azure_resource_groups() -> Result<Vec<AzureResourceGroup>, String> {
     Ok(groups)
 }
 
+/// List Azure resource groups using Service Principal credentials via Azure ARM REST API.
+#[tauri::command]
+pub async fn get_azure_resource_groups_sp(
+    credentials: CloudCredentials,
+) -> Result<Vec<AzureResourceGroup>, String> {
+    let tenant_id = credentials
+        .azure_tenant_id
+        .as_ref()
+        .filter(|s| !s.is_empty())
+        .ok_or("Azure Tenant ID is required")?;
+
+    let client_id = credentials
+        .azure_client_id
+        .as_ref()
+        .filter(|s| !s.is_empty())
+        .ok_or("Azure Client ID is required")?;
+
+    let client_secret = credentials
+        .azure_client_secret
+        .as_ref()
+        .filter(|s| !s.is_empty())
+        .ok_or("Azure Client Secret is required")?;
+
+    let subscription_id = credentials
+        .azure_subscription_id
+        .as_ref()
+        .filter(|s| !s.is_empty())
+        .ok_or("Azure Subscription ID is required")?;
+
+    let http_client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(30))
+        .build()
+        .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
+
+    // Step 1: Get Azure AD token
+    let token_url = format!(
+        "https://login.microsoftonline.com/{}/oauth2/v2.0/token",
+        tenant_id
+    );
+
+    let token_response = http_client
+        .post(&token_url)
+        .form(&[
+            ("grant_type", "client_credentials"),
+            ("client_id", client_id.as_str()),
+            ("client_secret", client_secret.as_str()),
+            ("scope", "https://management.azure.com/.default"),
+        ])
+        .send()
+        .await
+        .map_err(|e| format!("Failed to get Azure AD token: {}", e))?;
+
+    if !token_response.status().is_success() {
+        let status = token_response.status();
+        let error_text = token_response.text().await.unwrap_or_default();
+        return Err(format!(
+            "Azure AD authentication failed ({}): {}",
+            status, error_text
+        ));
+    }
+
+    let token_json: serde_json::Value = token_response
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse Azure AD token response: {}", e))?;
+
+    let access_token = token_json["access_token"]
+        .as_str()
+        .ok_or("No access token in Azure AD response")?;
+
+    // Step 2: List resource groups via ARM API
+    let rg_url = format!(
+        "https://management.azure.com/subscriptions/{}/resourcegroups?api-version=2021-04-01",
+        subscription_id
+    );
+
+    let rg_response = http_client
+        .get(&rg_url)
+        .bearer_auth(access_token)
+        .send()
+        .await
+        .map_err(|e| format!("Failed to list resource groups: {}", e))?;
+
+    if !rg_response.status().is_success() {
+        let status = rg_response.status();
+        let error_text = rg_response.text().await.unwrap_or_default();
+        return Err(format!(
+            "Failed to list resource groups ({}): {}",
+            status, error_text
+        ));
+    }
+
+    let rg_json: serde_json::Value = rg_response
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse resource groups response: {}", e))?;
+
+    let groups: Vec<AzureResourceGroup> = rg_json["value"]
+        .as_array()
+        .unwrap_or(&vec![])
+        .iter()
+        .map(|rg| AzureResourceGroup {
+            name: rg["name"].as_str().unwrap_or("").to_string(),
+            location: rg["location"].as_str().unwrap_or("").to_string(),
+        })
+        .collect();
+
+    Ok(groups)
+}
+
 /// Check Azure RBAC permissions by verifying role assignments.
 #[tauri::command]
 pub async fn check_azure_permissions(

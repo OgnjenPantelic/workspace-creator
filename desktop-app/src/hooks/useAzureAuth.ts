@@ -21,7 +21,7 @@ export interface UseAzureAuthReturn {
   setCheckingPermissions: (checking: boolean) => void;
   loadAccount: () => Promise<AzureAccount | null>;
   loadSubscriptions: () => Promise<void>;
-  loadResourceGroups: (subscriptionId: string) => Promise<void>;
+  loadResourceGroups: (subscriptionId: string, credentials?: CloudCredentials) => Promise<void>;
   handleAzureLogin: () => Promise<void>;
   handleSubscriptionChange: (
     subscriptionId: string,
@@ -67,22 +67,32 @@ export function useAzureAuth(): UseAzureAuthReturn {
     }
   }, []);
 
-  const loadResourceGroups = useCallback(async (subscriptionId: string) => {
+  const loadResourceGroups = useCallback(async (subscriptionId: string, credentials?: CloudCredentials) => {
     // Check if we already have cached results for this subscription
     if (resourceGroupsCacheKey === subscriptionId && resourceGroups.length > 0) {
       return;
     }
 
     try {
-      const groups = await invoke<{ name: string; location: string }[]>("get_azure_resource_groups", {
-        subscriptionId,
-      });
+      let groups: { name: string; location: string }[];
+
+      // Use SP REST API when in service_principal mode and credentials are provided
+      if (authMode === "service_principal" && credentials?.azure_client_id && credentials?.azure_client_secret) {
+        groups = await invoke<{ name: string; location: string }[]>("get_azure_resource_groups_sp", {
+          credentials,
+        });
+      } else {
+        groups = await invoke<{ name: string; location: string }[]>("get_azure_resource_groups", {
+          subscriptionId,
+        });
+      }
+
       setResourceGroups(groups);
       setResourceGroupsCacheKey(subscriptionId);
     } catch {
       setResourceGroups([]);
     }
-  }, [resourceGroupsCacheKey, resourceGroups.length]);
+  }, [resourceGroupsCacheKey, resourceGroups.length, authMode]);
 
   const handleAzureLogin = useCallback(async () => {
     setLoading(true);

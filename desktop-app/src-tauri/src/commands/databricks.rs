@@ -231,7 +231,10 @@ pub async fn validate_databricks_credentials(
         accounts_host, account_id
     );
 
-    let client = reqwest::Client::new();
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(30))
+        .build()
+        .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
 
     let token_response = client
         .post(&token_url)
@@ -594,7 +597,10 @@ pub async fn check_uc_permissions(
 
                     if let Ok(encoding_key) = EncodingKey::from_rsa_pem(key.as_bytes()) {
                         if let Ok(assertion) = encode(&header, &claims, &encoding_key) {
-                            let client = reqwest::Client::new();
+                            let client = reqwest::Client::builder()
+                                .timeout(std::time::Duration::from_secs(30))
+                                .build()
+                                .unwrap_or_default();
                             let token_response = client
                                 .post("https://oauth2.googleapis.com/token")
                                 .form(&[
@@ -648,7 +654,10 @@ pub async fn check_uc_permissions(
                     .as_ref()
                     .filter(|s| !s.is_empty())
                 {
-                    let client = reqwest::Client::new();
+                    let client = reqwest::Client::builder()
+                        .timeout(std::time::Duration::from_secs(30))
+                        .build()
+                        .unwrap_or_default();
 
                     let generate_token_url = format!(
                         "https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/{}:generateIdToken",
@@ -748,7 +757,10 @@ pub async fn check_uc_permissions(
 
         // If we got an ID token, call the Databricks Metastores API
         if let Some(token) = id_token {
-            let client = reqwest::Client::new();
+            let client = reqwest::Client::builder()
+                .timeout(std::time::Duration::from_secs(30))
+                .build()
+                .unwrap_or_default();
             let metastores_url = format!(
                 "https://accounts.gcp.databricks.com/api/2.0/accounts/{}/metastores",
                 account_id
@@ -874,7 +886,10 @@ pub async fn check_uc_permissions(
         accounts_host, account_id
     );
 
-    let client = reqwest::Client::new();
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(30))
+        .build()
+        .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
 
     let token_response = client
         .post(&token_url)
@@ -891,6 +906,18 @@ pub async fn check_uc_permissions(
         return Err("Failed to authenticate with Databricks".to_string());
     }
 
+    // Detect HTML responses on token endpoint
+    let token_content_type = token_response
+        .headers()
+        .get("content-type")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+    if token_content_type.contains("text/html") {
+        return Err(
+            "Received unexpected HTML response from Databricks token endpoint. Please verify your Databricks Account ID and credentials.".to_string()
+        );
+    }
+
     let token_json: serde_json::Value = token_response
         .json()
         .await
@@ -900,10 +927,10 @@ pub async fn check_uc_permissions(
         .as_str()
         .ok_or("No access token in response")?;
 
-    // List metastores
+    // List metastores (account-level API requires /accounts/{account_id} in path)
     let metastores_url = format!(
-        "https://{}/api/2.1/unity-catalog/metastores",
-        accounts_host
+        "https://{}/api/2.0/accounts/{}/metastores",
+        accounts_host, account_id
     );
 
     let metastores_response = client
@@ -929,6 +956,18 @@ pub async fn check_uc_permissions(
         });
     }
 
+    // Detect HTML responses (e.g., login page returned instead of JSON)
+    let content_type = metastores_response
+        .headers()
+        .get("content-type")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+    if content_type.contains("text/html") {
+        return Err(
+            "Received unexpected HTML response from Databricks API. This may indicate an authentication issue. Please verify your Databricks Account ID and credentials.".to_string()
+        );
+    }
+
     let metastores_json: serde_json::Value = metastores_response
         .json()
         .await
@@ -952,10 +991,10 @@ pub async fn check_uc_permissions(
         let metastore_id = metastore["metastore_id"].as_str().unwrap_or("");
         let metastore_name = metastore["name"].as_str().unwrap_or("");
 
-        // Check permissions on this metastore
+        // Check permissions on this metastore (account-level API)
         let permissions_url = format!(
-            "https://{}/api/2.1/unity-catalog/permissions/metastore/{}",
-            accounts_host, metastore_id
+            "https://{}/api/2.0/accounts/{}/metastores/{}/permissions",
+            accounts_host, account_id, metastore_id
         );
 
         let permissions_response = client

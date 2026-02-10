@@ -204,7 +204,7 @@ export function WizardProvider({ children }: { children: ReactNode }) {
   const loadAzureResourceGroups = async (_forceRefresh = false) => {
     const subscriptionId = credentials.azure_subscription_id || "";
     if (subscriptionId) {
-      await azure.loadResourceGroups(subscriptionId);
+      await azure.loadResourceGroups(subscriptionId, credentials);
     }
   };
 
