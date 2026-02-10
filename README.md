@@ -27,7 +27,7 @@ pip install -r requirements.txt
 python app.py
 ```
 
-Runs on port 8080 by default. Deployed to Google App Engine via `app.yaml`.
+Runs on port 8080 by default. Deployed to Databricks Apps via `app.yaml`.
 
 ## CI/CD
 

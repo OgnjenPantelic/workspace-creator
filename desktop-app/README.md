@@ -75,48 +75,25 @@ The project uses automated version syncing across all configuration files (`pack
 
 ### Creating a New Release
 
-Use npm's built-in version command to bump the version:
+From the `desktop-app/` directory:
 
 ```bash
-# Patch version (1.0.0 → 1.0.1)
-npm version patch
+# Bump version (pick one)
+npm version patch --no-git-tag-version   # 1.0.5 → 1.0.6
+npm version minor --no-git-tag-version   # 1.0.5 → 1.1.0
+npm version major --no-git-tag-version   # 1.0.5 → 2.0.0
 
-# Minor version (1.0.0 → 1.1.0)
-npm version minor
-
-# Major version (1.0.0 → 2.0.0)
-npm version major
-
-# Specific version
-npm version 1.2.3
-```
-
-This will automatically:
-1. Update `package.json` version
-2. Sync version to `src-tauri/Cargo.toml` and `src-tauri/tauri.conf.json`
-3. Create a git commit with the version number
-4. Create a git tag (e.g., `v1.0.1`)
-
-### Publishing the Release
-
-After running `npm version`, push the changes and tags:
-
-```bash
+# Commit and tag from the repo root
+cd ..
+git add .
+git commit -m "v1.0.6"
+git tag v1.0.6
 git push --follow-tags
 ```
 
-The GitHub Actions workflow will automatically:
-- Build macOS (arm64 and x64) and Windows installers
-- Create a GitHub release with the version tag
-- Upload all build artifacts (DMG, MSI, EXE)
+The `npm version` command automatically syncs the version to `Cargo.toml` and `tauri.conf.json` via the `version` lifecycle hook.
 
-### Manual Version Sync
-
-If you need to manually sync versions after editing `package.json`:
-
-```bash
-node scripts/sync-version.js
-```
+GitHub Actions will then build macOS (arm64 + x64) and Windows installers and create a GitHub release.
 
 ## Authentication
 
