@@ -1,6 +1,6 @@
 {
   "name": "databricks-deployer",
-  "version": "1.0.0",
+  "version": "1.0.6",
   "description": "Deploy Databricks workspaces with ease",
   "type": "module",
   "scripts": {
@@ -9,7 +9,8 @@
     "preview": "vite preview",
     "tauri": "tauri",
     "test": "vitest",
-    "test:run": "vitest run"
+    "test:run": "vitest run",
+    "version": "node scripts/sync-version.cjs"
   },
   "dependencies": {
     "react": "^18.2.0",
