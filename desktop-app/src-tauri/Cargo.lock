@@ -715,7 +715,7 @@ dependencies = [
 
 [[package]]
 name = "databricks-deployer"
-version = "1.0.0"
+version = "1.0.7"
 dependencies = [
  "dirs 5.0.1",
  "jsonwebtoken",

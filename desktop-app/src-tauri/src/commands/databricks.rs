@@ -467,6 +467,163 @@ pub async fn check_uc_permissions(
         .as_deref()
         .unwrap_or("credentials");
 
+    // Azure Identity mode: use Azure CLI to get token and exchange it for Databricks token
+    if cloud == "azure" && credentials.azure_databricks_use_identity == Some(true) {
+        debug_log!("[check_uc_permissions] Using Azure identity mode");
+        
+        // Get Azure CLI path
+        let az_cli_path = match dependencies::find_azure_cli_path() {
+            Some(path) => path,
+            None => {
+                return Ok(UCPermissionCheck {
+                    metastore: MetastoreInfo {
+                        exists: false,
+                        metastore_id: None,
+                        metastore_name: None,
+                        region: Some(region),
+                    },
+                    has_create_catalog: true,
+                    has_create_external_location: true,
+                    has_create_storage_credential: true,
+                    can_create_catalog: true,
+                    message: "Azure CLI not installed. Metastore detection unavailable.".to_string(),
+                });
+            }
+        };
+        
+        // Get Azure AD token for Databricks
+        let token_output = std::process::Command::new(&az_cli_path)
+            .args([
+                "account", "get-access-token",
+                "--resource", "2ff814a6-3304-4ab8-85cb-cd0e6f879c1d", // Databricks Azure AD resource ID
+                "--query", "accessToken",
+                "-o", "tsv"
+            ])
+            .output();
+        
+        if let Ok(output) = token_output {
+            if output.status.success() {
+                let azure_token = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                
+                // Exchange Azure AD token for Databricks token
+                let client = reqwest::Client::builder()
+                    .timeout(std::time::Duration::from_secs(30))
+                    .build()
+                    .unwrap_or_default();
+                    
+                let token_url = format!(
+                    "https://accounts.azuredatabricks.net/oidc/accounts/{}/v1/token",
+                    account_id
+                );
+                
+                let token_response = client
+                    .post(&token_url)
+                    .form(&[
+                        ("grant_type", "urn:ietf:params:oauth:grant-type:jwt-bearer"),
+                        ("assertion", &azure_token),
+                        ("scope", "all-apis"),
+                    ])
+                    .send()
+                    .await;
+                
+                if let Ok(resp) = token_response {
+                    if resp.status().is_success() {
+                        if let Ok(token_json) = resp.json::<serde_json::Value>().await {
+                            if let Some(access_token) = token_json["access_token"].as_str() {
+                                // Call the metastores API
+                                let metastores_url = format!(
+                                    "https://accounts.azuredatabricks.net/api/2.0/accounts/{}/metastores",
+                                    account_id
+                                );
+                                
+                                debug_log!("[check_uc_permissions] Calling metastores API: {}", metastores_url);
+                                
+                                let metastores_response = client
+                                    .get(&metastores_url)
+                                    .bearer_auth(access_token)
+                                    .send()
+                                    .await;
+                                
+                                if let Ok(metastores_resp) = metastores_response {
+                                    if metastores_resp.status().is_success() {
+                                        if let Ok(metastores_json) = metastores_resp.json::<serde_json::Value>().await {
+                                            debug_log!("[check_uc_permissions] Metastores response: {}", metastores_json);
+                                            
+                                            let metastores = metastores_json["metastores"].as_array();
+                                            let region_normalized = region.to_lowercase().replace(" ", "").replace("-", "");
+                                            
+                                            let matching_metastore = metastores.and_then(|arr| {
+                                                arr.iter().find(|m| {
+                                                    let metastore_region = m["region"].as_str().unwrap_or("");
+                                                    let metastore_region_normalized = metastore_region
+                                                        .to_lowercase()
+                                                        .replace(" ", "")
+                                                        .replace("-", "");
+                                                    metastore_region_normalized == region_normalized
+                                                })
+                                            });
+                                            
+                                            if let Some(metastore) = matching_metastore {
+                                                let metastore_id = metastore["metastore_id"].as_str().unwrap_or("");
+                                                let metastore_name = metastore["name"].as_str().unwrap_or("");
+                                                let metastore_owner = metastore["owner"].as_str().unwrap_or("");
+                                                
+                                                let message = get_metastore_owner_info(metastore_owner, &credentials);
+                                                
+                                                return Ok(UCPermissionCheck {
+                                                    metastore: MetastoreInfo {
+                                                        exists: true,
+                                                        metastore_id: Some(metastore_id.to_string()),
+                                                        metastore_name: Some(metastore_name.to_string()),
+                                                        region: Some(region),
+                                                    },
+                                                    has_create_catalog: false,
+                                                    has_create_external_location: false,
+                                                    has_create_storage_credential: false,
+                                                    can_create_catalog: false,
+                                                    message,
+                                                });
+                                            } else {
+                                                return Ok(UCPermissionCheck {
+                                                    metastore: MetastoreInfo {
+                                                        exists: false,
+                                                        metastore_id: None,
+                                                        metastore_name: None,
+                                                        region: Some(region),
+                                                    },
+                                                    has_create_catalog: true,
+                                                    has_create_external_location: true,
+                                                    has_create_storage_credential: true,
+                                                    can_create_catalog: true,
+                                                    message: "No metastore found in region. A new one will be created.".to_string(),
+                                                });
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Fallback if any step fails
+        return Ok(UCPermissionCheck {
+            metastore: MetastoreInfo {
+                exists: false,
+                metastore_id: None,
+                metastore_name: None,
+                region: Some(region),
+            },
+            has_create_catalog: true,
+            has_create_external_location: true,
+            has_create_storage_credential: true,
+            can_create_catalog: true,
+            message: "Metastore detection unavailable. Any existing metastore will be auto-detected during deployment.".to_string(),
+        });
+    }
+
     // For GCP, always use the GCP-specific ID token method
     if auth_type == "profile" && cloud != "gcp" {
         let profile_name = credentials
