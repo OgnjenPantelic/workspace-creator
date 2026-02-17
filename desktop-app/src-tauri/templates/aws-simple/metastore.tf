@@ -9,8 +9,10 @@ resource "random_string" "metastore_suffix" {
   upper   = false
 }
 
-# Get list of all metastores in the account
+# Get list of all metastores in the account (skip if user already provided a metastore ID,
+# because the provider crashes on duplicate metastore names)
 data "databricks_metastores" "all" {
+  count    = var.existing_metastore_id == "" ? 1 : 0
   provider = databricks.mws
 }
 
@@ -21,8 +23,8 @@ locals {
   
   # If user provided an existing_metastore_id, use it
   # Otherwise, look for an existing metastore in this region
-  existing_metastore_ids = [
-    for name, id in data.databricks_metastores.all.ids : id
+  existing_metastore_ids = var.existing_metastore_id != "" ? [] : [
+    for name, id in data.databricks_metastores.all[0].ids : id
     if can(regex(".*${var.region}.*", lower(name)))
   ]
   
