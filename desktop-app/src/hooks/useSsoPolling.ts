@@ -2,7 +2,7 @@ import { useRef, useCallback } from "react";
 
 /**
  * Hook for managing SSO polling intervals
- * Used by AWS SSO and Azure CLI login flows
+ * Used by AWS SSO and Databricks OAuth login flows
  */
 export function useSsoPolling() {
   const ssoPollingRef = useRef<ReturnType<typeof setInterval> | null>(null);

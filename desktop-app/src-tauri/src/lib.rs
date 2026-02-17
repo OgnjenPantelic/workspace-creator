@@ -10,10 +10,10 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_single_instance::init(|_app, _argv, _cwd| {
-            // Focus the existing window if app is already running
+            // Single-instance: second launch is ignored (focus logic could be added here)
         }))
         .setup(|app| {
-            // Extract templates to app data directory on first run
+            // Extract templates to app data directory on first run or when template version changes
             let app_handle = app.handle().clone();
             std::thread::spawn(move || {
                 if let Err(e) = commands::setup_templates(&app_handle) {

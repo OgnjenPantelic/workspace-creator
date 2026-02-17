@@ -138,7 +138,7 @@ export function getDatabricksValidationCommand(
     };
   }
 
-  // No validation command needed (shouldn't reach here in normal flow)
+  // Fallback for invalid state (shouldn't reach here in normal flow)
   return { error: "Invalid validation state" };
 }
 

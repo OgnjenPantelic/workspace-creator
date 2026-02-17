@@ -26,7 +26,7 @@ export function ConfigurationScreen() {
   const [createNewVpc, setCreateNewVpc] = useState(true);
   const onContinue = () => setScreen("unity-catalog-config");
   const onBack = goBack;
-  // Form handlers
+  
   const handleFormChange = (name: string, value: any) => {
     setFormValues((prev) => {
       const updated = { ...prev, [name]: value };
@@ -77,6 +77,12 @@ export function ConfigurationScreen() {
     });
   };
 
+  // Field visibility and validation depend on cloud and network toggles:
+  // - AWS: createNewVpc controls new VPC vs existing VPC fields
+  // - Azure: create_new_vnet controls new VNet vs existing VNet fields
+  // - hiddenFields: fields not shown (thus not validated)
+  // - conditionallyRequired: required only when toggle is in given state
+  
   // Determine which fields are hidden by toggles (should not be validated)
   const createNewVnetValue = formValues.create_new_vnet;
   const createNewVnet = createNewVnetValue === true || createNewVnetValue === "true" || createNewVnetValue === undefined;
@@ -136,6 +142,9 @@ export function ConfigurationScreen() {
     ...conditionallyRequired,
   ]);
 
+  // Validation: Terraform-required vars + always-required + conditionally required.
+  // Also validates prefix/workspace_name format (lowercase, hyphens, length).
+  
   // Memoized validation for required form fields
   const formValidation = useMemo(() => {
     // Terraform-required (no default) + always-required (have defaults but must be filled)
@@ -216,7 +225,6 @@ export function ConfigurationScreen() {
       {error && <div className="alert alert-error">{error}</div>}
 
       <form onSubmit={(e) => e.preventDefault()}>
-        {/* Variable Sections */}
         {Object.entries(sections)
           .filter(([sectionName]) => !sectionName.startsWith("Advanced") && sectionName !== "Tags")
           .map(([sectionName, sectionVars]) => (

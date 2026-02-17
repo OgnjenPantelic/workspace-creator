@@ -281,10 +281,12 @@ pub fn save_configuration(
                     "databricks_account_id".to_string(),
                     serde_json::Value::String(account_id),
                 );
-            }
         }
+    }
 
-        let auth_type = match creds.databricks_auth_type.as_deref() {
+    // Map UI auth type to Terraform databricks_auth_type: azure-cli (Azure Identity),
+    // oauth-m2m (service principal), databricks-cli (OAuth/SSO profile)
+    let auth_type = match creds.databricks_auth_type.as_deref() {
             Some("profile") => {
                 // Check if this is Azure identity mode
                 if creds.cloud.as_deref() == Some("azure") && creds.azure_databricks_use_identity == Some(true) {
@@ -435,7 +437,7 @@ pub async fn run_terraform_command(
 ) -> Result<(), String> {
     let safe_deployment_name = sanitize_deployment_name(&deployment_name)?;
 
-    // Check if actually running
+    // Check if a Terraform deployment is already in progress
     {
         let proc = CURRENT_PROCESS.lock().map_err(|e| e.to_string())?;
         if let Some(pid) = *proc {
@@ -468,7 +470,7 @@ pub async fn run_terraform_command(
 
     let env_vars = build_env_vars(&credentials);
 
-    // Reset status
+    // Reset deployment status before starting Terraform
     {
         let mut status = DEPLOYMENT_STATUS.lock().map_err(|e| e.to_string())?;
         status.running = true;

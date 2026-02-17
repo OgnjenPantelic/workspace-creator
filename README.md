@@ -1,6 +1,8 @@
 # Workspace Creator
 
-Tools for deploying Databricks workspaces across AWS, Azure, and GCP.
+**Version:** 1.0.8
+
+Desktop app and tools for deploying Databricks workspaces across AWS, Azure, and GCP with Unity Catalog, automated Terraform setup, and Azure identity support.
 
 ## Components
 
@@ -9,9 +11,19 @@ Tools for deploying Databricks workspaces across AWS, Azure, and GCP.
 | `desktop-app/` | Tauri desktop app for guided workspace deployment (React + Rust) |
 | `download-site/` | Flask-based download page for distributing the app |
 
+## System Requirements
+
+- **Runtime:** macOS 10.15+ or Windows 10+
+- **Build:** Node.js 18+, Rust 1.70+, platform tools (Xcode/Visual Studio)
+- **Deployment:** Git, Terraform (auto-installed), cloud CLIs (optional)
+
 ## Quick Start
 
 ### Desktop App
+
+**Download:** Get pre-built binaries from [GitHub Releases](https://github.com/OgnjenPantelic/workspace-creator/releases)
+
+**Build from source:**
 ```bash
 cd desktop-app
 npm install
@@ -42,3 +54,12 @@ Runs on port 8080 by default. Deployed to Databricks Apps via `app.yaml`.
 - Automatically creates GitHub Release with all artifacts
 
 **Releases:** [github.com/OgnjenPantelic/workspace-creator/releases](https://github.com/OgnjenPantelic/workspace-creator/releases)
+
+## Troubleshooting
+
+For detailed troubleshooting, see [desktop-app/README.md#troubleshooting](desktop-app/README.md#troubleshooting).
+
+**Common issues:**
+- **Terraform not found:** Restart the app after first run
+- **Azure CLI not detected:** Run `az login` before starting the app
+- **AWS SSO expired:** Run `aws sso login --profile <profile>` to refresh

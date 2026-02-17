@@ -38,7 +38,6 @@ const DependenciesScreen: React.FC = () => {
       {error && <div className="alert alert-error">{error}</div>}
 
       <div className="dependency-list">
-        {/* Terraform - Required */}
         <div className="dependency-item">
           <div className="dependency-info">
             <div className={`dependency-status ${terraformDep?.installed ? "installed" : "missing"}`} />
@@ -70,7 +69,6 @@ const DependenciesScreen: React.FC = () => {
           </div>
         </div>
 
-        {/* Git - Required */}
         <div className="dependency-item">
           <div className="dependency-info">
             <div className={`dependency-status ${gitDep?.installed ? "installed" : "missing"}`} />
@@ -91,7 +89,6 @@ const DependenciesScreen: React.FC = () => {
           </div>
         </div>
 
-        {/* Cloud-specific CLI - Optional */}
         <div className="dependency-item">
           <div className="dependency-info">
             <div className={`dependency-status ${cloudCliDep?.installed ? "installed" : "optional"}`} />
@@ -121,7 +118,6 @@ const DependenciesScreen: React.FC = () => {
           </div>
         </div>
 
-        {/* Databricks CLI - Optional */}
         <div className="dependency-item">
           <div className="dependency-info">
             <div className={`dependency-status ${databricksCli?.installed ? "installed" : "optional"}`} />
@@ -131,7 +127,7 @@ const DependenciesScreen: React.FC = () => {
                 <div className="dependency-version">{databricksCli.version}</div>
               )}
               {!databricksCli?.installed && (
-                <div className="help-text">Enables profile-based OAuth authentication.</div>
+                <div className="help-text">Enables profile-based authentication (OAuth or service principal).</div>
               )}
             </div>
           </div>

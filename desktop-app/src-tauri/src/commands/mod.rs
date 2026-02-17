@@ -128,7 +128,7 @@ pub(crate) const INTERNAL_VARIABLES: &[&str] = &[
 
 // ─── Helper Functions ───────────────────────────────────────────────────────
 
-/// Recursively copy a directory tree.
+/// Recursively copy a directory tree. Used for templates and deployments.
 pub(crate) fn copy_dir_all(src: &PathBuf, dst: &PathBuf) -> Result<(), String> {
     fs::create_dir_all(dst).map_err(|e| e.to_string())?;
 

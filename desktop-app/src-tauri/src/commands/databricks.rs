@@ -7,6 +7,9 @@ use serde::Serialize;
 use std::fs;
 use std::process::Stdio;
 
+/// Azure AD resource ID for Databricks - used to obtain tokens for account-level APIs
+const DATABRICKS_AZURE_RESOURCE_ID: &str = "2ff814a6-3304-4ab8-85cb-cd0e6f879c1d";
+
 /// List Databricks CLI profiles for a given cloud.
 #[tauri::command]
 pub fn get_databricks_profiles(cloud: String) -> Vec<dependencies::DatabricksProfile> {
@@ -471,7 +474,6 @@ pub async fn check_uc_permissions(
     if cloud == "azure" && credentials.azure_databricks_use_identity == Some(true) {
         debug_log!("[check_uc_permissions] Using Azure identity mode");
         
-        // Get Azure CLI path
         let az_cli_path = match dependencies::find_azure_cli_path() {
             Some(path) => path,
             None => {
@@ -495,7 +497,7 @@ pub async fn check_uc_permissions(
         let token_output = std::process::Command::new(&az_cli_path)
             .args([
                 "account", "get-access-token",
-                "--resource", "2ff814a6-3304-4ab8-85cb-cd0e6f879c1d", // Databricks Azure AD resource ID
+                "--resource", DATABRICKS_AZURE_RESOURCE_ID,
                 "--query", "accessToken",
                 "-o", "tsv"
             ])
@@ -505,9 +507,7 @@ pub async fn check_uc_permissions(
             if output.status.success() {
                 let azure_token = String::from_utf8_lossy(&output.stdout).trim().to_string();
                 
-                // Use the Azure AD token directly to call the metastores API
-                // The token obtained with --resource 2ff814a6-3304-4ab8-85cb-cd0e6f879c1d can be
-                // used directly as a Bearer token for Databricks account-level APIs without token exchange
+                // Use the Azure AD token directly for metastores API (no token exchange needed)
                 let client = reqwest::Client::builder()
                     .timeout(std::time::Duration::from_secs(30))
                     .build()
@@ -602,7 +602,7 @@ pub async fn check_uc_permissions(
         });
     }
 
-    // For GCP, always use the GCP-specific ID token method
+    // For AWS/Azure with profile auth, use Databricks CLI to list metastores
     if auth_type == "profile" && cloud != "gcp" {
         let profile_name = credentials
             .databricks_profile
@@ -981,7 +981,7 @@ pub async fn check_uc_permissions(
             }
         }
 
-        // Graceful fallback
+        // Fallback when GCP ID token could not be obtained — allow deployment to proceed
         return Ok(UCPermissionCheck {
             metastore: MetastoreInfo {
                 exists: false,
@@ -1254,7 +1254,7 @@ pub async fn validate_azure_databricks_identity(
     let token_output = std::process::Command::new(&az_cli_path)
         .args([
             "account", "get-access-token",
-            "--resource", "2ff814a6-3304-4ab8-85cb-cd0e6f879c1d", // Databricks Azure AD resource ID
+            "--resource", DATABRICKS_AZURE_RESOURCE_ID,
             "--query", "accessToken",
             "-o", "tsv"
         ])
@@ -1268,9 +1268,7 @@ pub async fn validate_azure_databricks_identity(
     
     let azure_token = String::from_utf8_lossy(&token_output.stdout).trim().to_string();
     
-    // Use the Azure AD token directly to verify account admin access via SCIM API
-    // The token obtained with --resource 2ff814a6-3304-4ab8-85cb-cd0e6f879c1d can be
-    // used directly as a Bearer token for Databricks account-level APIs without token exchange
+    // Use the Azure AD token directly for SCIM API (no token exchange needed)
     let client = reqwest::Client::new();
     let users_url = format!(
         "https://accounts.azuredatabricks.net/api/2.0/accounts/{}/scim/v2/Users?count=1",

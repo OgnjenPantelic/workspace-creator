@@ -29,7 +29,7 @@ pub fn setup_templates(app: &AppHandle) -> Result<(), String> {
         return Ok(());
     }
 
-    // Remove old templates if they exist
+    // Remove old templates to copy fresh ones (version changed or first run)
     if templates_dir.exists() {
         fs::remove_dir_all(&templates_dir)
             .map_err(|e| format!("Failed to remove old templates: {}", e))?;

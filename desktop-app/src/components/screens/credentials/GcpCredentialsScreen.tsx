@@ -165,6 +165,10 @@ export function GcpCredentialsScreen() {
 
   const [validationAttempted, setValidationAttempted] = useState(false);
 
+  // ADC mode: validate project + service account, check impersonation match
+  // Service account mode: validate project + JSON key
+  // Then run permission check (soft warning, does not block)
+  
   // Validate and continue from GCP credentials
   const validateAndContinue = async () => {
     setValidationAttempted(true);

@@ -95,7 +95,7 @@ pub fn parse_variables_tf(content: &str) -> Vec<TerraformVariable> {
         }
 
         if in_variable_block {
-            // Handle multiline default value
+            // Parse multiline default values (maps/lists) by tracking brace/bracket balance
             if in_multiline_default {
                 multiline_default_buffer.push_str(trimmed);
                 multiline_default_buffer.push(' ');

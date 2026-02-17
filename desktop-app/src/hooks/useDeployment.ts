@@ -99,6 +99,9 @@ export function useDeployment(): UseDeploymentReturn {
     [clearPollInterval]
   );
 
+  // Polls get_deployment_status until status.running is false, then resolves with success/failure.
+  // Used after init and plan to wait for backend completion before proceeding.
+  
   // Helper to wait for a terraform command to complete
   const waitForCommandComplete = useCallback(async (): Promise<boolean> => {
     return new Promise((resolve) => {
@@ -156,7 +159,7 @@ export function useDeployment(): UseDeploymentReturn {
       // Store credentials for later use in startApply
       credentialsRef.current = credentials;
 
-      // Build variables from form values (as JSON values for save_configuration)
+      // Build variables from form values for save_configuration (primitives, filtered for non-empty)
       const values: Record<string, any> = {};
       for (const [key, value] of Object.entries(formValues)) {
         if (value !== undefined && value !== null && value !== "") {

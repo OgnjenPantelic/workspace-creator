@@ -191,7 +191,7 @@ export function WizardProvider({ children }: { children: ReactNode }) {
     };
   }, [aws.cleanup, deployment.cleanup]);
 
-  // -- Helpers & handlers (moved from App.tsx) ------------------------------
+  // -- Helpers & handlers ---------------------------------------------------
   const checkDependencies = async () => {
     try {
       const deps = await invoke<Record<string, DependencyStatus>>("check_dependencies");
@@ -593,7 +593,7 @@ export function WizardProvider({ children }: { children: ReactNode }) {
       azure.setPermissionCheck(result.permissionCheck);
     }
 
-    // Only show Azure Admin dialog in CLI mode (guarantees CLI availability)
+    // Only show Azure Admin dialog in CLI mode (user has already authenticated via Azure CLI)
     if (azure.authMode === "cli" && credentials.azure_account_email) {
       setShowAzureAdminDialog(true);
     } else {
@@ -615,7 +615,7 @@ export function WizardProvider({ children }: { children: ReactNode }) {
     setScreen("databricks-credentials");
   };
 
-  // -- Context value --------------------------------------------------------
+  // -- Context value construction -------------------------------------------
   const value: WizardContextValue = {
     screen, setScreen, goBack,
     selectedCloud, loadingCloud, selectCloud,

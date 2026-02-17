@@ -81,7 +81,7 @@ export const VARIABLE_DESCRIPTION_OVERRIDES: Record<string, string> = {
   workspace_name: "Name for your Databricks workspace.",
   databricks_workspace_name: "Name for your Databricks workspace.",
   admin_user: "Email address of the workspace admin. Must already exist in your Databricks account.",
-  root_storage_name: "Name for the storage account (Azure) or S3 bucket (AWS). Lowercase letters and numbers only, 3-24 characters.",
+  root_storage_name: "Storage account (Azure: 3-24 chars) or S3 bucket (AWS: 3-63 chars). Lowercase letters and numbers only.",
   workspace_sku: "Pricing tier for the workspace. Premium is required for Unity Catalog.",
   // Cloud-specific - AWS
   region: "AWS region where your Databricks workspace will be deployed.",

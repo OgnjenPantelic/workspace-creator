@@ -1052,10 +1052,10 @@ pub async fn create_gcp_service_account(
             "Failed to grant custom role to service account: {}",
             stderr.trim()
         ));
-    }
+        }
 
-    // Step 2c: Verify permissions
-    let _ = Command::new(&gcloud_cli)
+        // Step 2c: Briefly impersonate SA and run test-iam-permissions to verify IAM propagation
+        let _ = Command::new(&gcloud_cli)
         .args([
             "config",
             "set",

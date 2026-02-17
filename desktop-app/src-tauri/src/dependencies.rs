@@ -102,7 +102,7 @@ pub struct DatabricksProfile {
     pub account_id: Option<String>,
     pub has_client_credentials: bool,
     pub has_token: bool,
-    pub cloud: String, // "aws" or "azure"
+    pub cloud: String, // "aws", "azure", or "gcp"
 }
 
 /// Find Databricks CLI binary

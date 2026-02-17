@@ -1,5 +1,7 @@
 # Databricks Deployer
 
+**Version:** 1.0.8
+
 Desktop app for deploying Databricks workspaces on AWS, Azure, and GCP using Terraform.
 
 **Download:** See [GitHub Releases](https://github.com/OgnjenPantelic/workspace-creator/releases) for the latest builds.
@@ -13,6 +15,7 @@ Desktop app for deploying Databricks workspaces on AWS, Azure, and GCP using Ter
 - Catalog creation with isolated storage (S3 / Azure Storage / GCS)
 - Auto-installs Terraform if missing (v1.9.8)
 - Supports CLI profiles, SSO, and service principal authentication
+- Azure identity for Databricks (no service principal needed with Azure CLI + Account Admin)
 - GCP service account creation with custom IAM role and impersonation setup
 - Cloud-specific permission validation before deployment
 - Rollback support (terraform destroy with resource cleanup)
@@ -35,7 +38,7 @@ Desktop app for deploying Databricks workspaces on AWS, Azure, and GCP using Ter
 2. Select cloud provider (AWS, Azure, or GCP)
 3. Verify dependencies (Terraform, Git, cloud CLIs)
 4. Enter cloud credentials (CLI profile, service principal, or ADC)
-5. Enter Databricks credentials (profile or service principal)
+5. Enter Databricks credentials (profile, service principal, or Azure identity)
 6. Select deployment template
 7. Configure workspace (name, region, networking)
 8. Configure Unity Catalog (optional -- auto-detects existing metastore)
@@ -67,7 +70,7 @@ npm run test           # Run tests (watch mode)
 npm run test:run       # Run tests once
 ```
 
-Output: `src-tauri/target/release/bundle/`
+Output: `src-tauri/target/release/bundle/` (macOS: `.dmg`, Windows: `.msi`/`.exe`)
 
 ## Version Management & Releases
 
@@ -79,15 +82,15 @@ From the `desktop-app/` directory:
 
 ```bash
 # Bump version (pick one)
-npm version patch --no-git-tag-version   # 1.0.5 → 1.0.6
-npm version minor --no-git-tag-version   # 1.0.5 → 1.1.0
-npm version major --no-git-tag-version   # 1.0.5 → 2.0.0
+npm version patch --no-git-tag-version   # 1.0.8 → 1.0.9
+npm version minor --no-git-tag-version   # 1.0.8 → 1.1.0
+npm version major --no-git-tag-version   # 1.0.8 → 2.0.0
 
 # Commit and tag from the repo root
 cd ..
 git add .
-git commit -m "v1.0.6"
-git tag v1.0.6
+git commit -m "v1.0.9"
+git tag v1.0.9
 git push --follow-tags
 ```
 
@@ -108,6 +111,8 @@ databricks auth login --account-id <ACCOUNT_ID>
 - Client ID
 - Client Secret
 
+**Azure users:** Can use Azure identity if authenticated via Azure CLI and have Account Admin role (see Azure authentication).
+
 ### AWS
 - CLI profiles (`~/.aws/credentials`) including SSO
 - Or manual: Access Key ID, Secret Access Key
@@ -116,6 +121,11 @@ databricks auth login --account-id <ACCOUNT_ID>
 ### Azure
 - CLI auth (`az login`)
 - Or service principal: Tenant ID, Subscription ID, Client ID, Client Secret
+
+**Option 3: Azure Identity (Azure CLI only)**
+- Requires Azure CLI (`az login`) and Databricks Account Admin privileges
+- Uses Azure AD token directly (no Databricks service principal needed)
+- Terraform auth type: `azure-cli`
 
 ### GCP
 **Option 1: ADC with Service Account Impersonation** (recommended)
@@ -270,3 +280,12 @@ Ensure your identity has metastore admin or the required grants (`CREATE CATALOG
 
 ### GCP destroy fails on VPC deletion
 Databricks creates firewall rules in the VPC that are not managed by Terraform. Delete them manually with `gcloud compute firewall-rules list --filter="network:<vpc-name>" --format="value(name)" | xargs -I {} gcloud compute firewall-rules delete {} --quiet`, then re-run destroy.
+
+### Azure identity validation fails
+Run `az login` and verify you have Databricks Account Admin. Test with:
+```bash
+az account get-access-token --resource 2ff814a6-3304-4ab8-85cb-cd0e6f879c1d
+```
+
+### Databricks token cache issues
+Delete `~/.databricks/token-cache.json` and re-run `databricks auth login`.
