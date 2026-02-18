@@ -61,12 +61,6 @@ pub struct AssistantSettings {
     pub models_cache_timestamp: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub chat_history: Option<Vec<ChatMessage>>,
-    #[serde(skip, default)]
-    pub has_github_key: bool,
-    #[serde(skip, default)]
-    pub has_openai_key: bool,
-    #[serde(skip, default)]
-    pub has_claude_key: bool,
 }
 
 /// Response struct for assistant_get_settings that includes computed has_*_key flags.
