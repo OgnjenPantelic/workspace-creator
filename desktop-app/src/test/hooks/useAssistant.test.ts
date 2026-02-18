@@ -43,6 +43,7 @@ describe("useAssistant", () => {
         has_claude_key: false,
       };
       mockInvoke.mockResolvedValueOnce(settings);
+      mockInvoke.mockResolvedValueOnce([]); // Models list (loaded automatically for GitHub)
 
       const { result } = renderHook(() => useAssistant());
 
@@ -69,6 +70,7 @@ describe("useAssistant", () => {
         has_claude_key: false,
       };
       mockInvoke.mockResolvedValueOnce(settings);
+      mockInvoke.mockResolvedValueOnce([]); // Models list (loaded automatically for GitHub)
 
       const { result } = renderHook(() => useAssistant());
 
@@ -100,6 +102,7 @@ describe("useAssistant", () => {
         has_openai_key: false,
         has_claude_key: false,
       }); // Settings reload after save
+      mockInvoke.mockResolvedValueOnce([]); // Models list (loaded automatically for GitHub)
 
       const { result } = renderHook(() => useAssistant());
 
@@ -150,6 +153,7 @@ describe("useAssistant", () => {
         has_openai_key: false,
         has_claude_key: false,
       }); // Initial settings load
+      mockInvoke.mockResolvedValueOnce([]); // Models list (loaded automatically for GitHub)
       mockInvoke.mockResolvedValueOnce("This is the assistant's reply"); // Chat response
       mockInvoke.mockResolvedValueOnce(undefined); // Save history
 
@@ -201,6 +205,7 @@ describe("useAssistant", () => {
         has_claude_key: false,
       };
       mockInvoke.mockResolvedValueOnce(settings); // Initial settings load
+      mockInvoke.mockResolvedValueOnce([]); // Models list (loaded automatically for GitHub)
       mockInvoke.mockResolvedValueOnce("Second answer"); // Chat response
       mockInvoke.mockResolvedValueOnce(undefined); // Save history
 
@@ -233,6 +238,7 @@ describe("useAssistant", () => {
         has_openai_key: false,
         has_claude_key: false,
       }); // Initial settings load
+      mockInvoke.mockResolvedValueOnce([]); // Models list (loaded automatically for GitHub)
       mockInvoke.mockRejectedValueOnce("Rate limit reached");
 
       const { result } = renderHook(() => useAssistant());
@@ -258,6 +264,7 @@ describe("useAssistant", () => {
         has_openai_key: false,
         has_claude_key: false,
       });
+      mockInvoke.mockResolvedValueOnce([]); // Models list (loaded automatically for GitHub)
 
       const { result } = renderHook(() => useAssistant());
 
@@ -270,7 +277,7 @@ describe("useAssistant", () => {
       });
 
       // Should not call assistant_chat for empty/whitespace message
-      expect(mockInvoke).toHaveBeenCalledTimes(1); // Only initial settings load
+      expect(mockInvoke).toHaveBeenCalledTimes(2); // Settings load + models load
       expect(result.current.messages).toHaveLength(0);
     });
   });
@@ -289,6 +296,7 @@ describe("useAssistant", () => {
         has_claude_key: false,
       };
       mockInvoke.mockResolvedValueOnce(settings); // Initial load
+      mockInvoke.mockResolvedValueOnce([]); // Models list (loaded automatically for GitHub)
       mockInvoke.mockResolvedValueOnce(undefined); // Switch provider success
       mockInvoke.mockResolvedValueOnce({
         active_provider: "github-models",
@@ -322,6 +330,7 @@ describe("useAssistant", () => {
         has_openai_key: false,
         has_claude_key: false,
       });
+      mockInvoke.mockResolvedValueOnce([]); // Models list (loaded automatically for GitHub)
       mockInvoke.mockRejectedValueOnce("Failed to switch");
 
       const { result } = renderHook(() => useAssistant());
@@ -350,6 +359,7 @@ describe("useAssistant", () => {
         has_openai_key: false,
         has_claude_key: false,
       }); // Initial load
+      mockInvoke.mockResolvedValueOnce([]); // Models list (loaded automatically for GitHub)
       mockInvoke.mockResolvedValueOnce(undefined); // Delete success
       mockInvoke.mockResolvedValueOnce({
         active_provider: "github-models",
@@ -386,6 +396,7 @@ describe("useAssistant", () => {
         has_openai_key: true,
         has_claude_key: false,
       }); // Initial load
+      mockInvoke.mockResolvedValueOnce([]); // Models list (loaded automatically for GitHub)
       mockInvoke.mockResolvedValueOnce(undefined); // Delete success
       mockInvoke.mockResolvedValueOnce({
         active_provider: "github-models",
@@ -423,6 +434,7 @@ describe("useAssistant", () => {
         has_openai_key: false,
         has_claude_key: false,
       }); // Initial load
+      mockInvoke.mockResolvedValueOnce([]); // Models list (loaded automatically for GitHub)
       mockInvoke.mockResolvedValueOnce(undefined); // Delete all success
       mockInvoke.mockResolvedValueOnce({
         active_provider: "github-models",
@@ -535,6 +547,7 @@ describe("useAssistant", () => {
         has_openai_key: false,
         has_claude_key: false,
       }); // Initial load
+      mockInvoke.mockResolvedValueOnce([]); // Models list (loaded automatically for GitHub)
       mockInvoke.mockResolvedValueOnce(undefined); // Update model success
 
       const { result } = renderHook(() => useAssistant());
