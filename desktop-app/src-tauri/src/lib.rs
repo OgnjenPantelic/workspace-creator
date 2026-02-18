@@ -47,6 +47,7 @@ pub fn run() {
             commands::clear_templates_cache,
             commands::get_deployments_folder,
             commands::open_folder,
+            commands::open_url,
             commands::get_databricks_profiles,
             commands::databricks_cli_login,
             commands::get_databricks_profile_credentials,
@@ -62,6 +63,18 @@ pub fn run() {
             commands::validate_azure_databricks_identity,
             commands::create_gcp_service_account,
             commands::add_service_account_to_databricks,
+            // AI Assistant
+            commands::assistant_save_token,
+            commands::assistant_chat,
+            commands::assistant_get_settings,
+            commands::assistant_switch_provider,
+            commands::assistant_reconnect,
+            commands::assistant_delete_provider_key,
+            commands::assistant_delete_all_keys,
+            commands::assistant_get_available_models,
+            commands::assistant_update_model,
+            commands::assistant_save_history,
+            commands::assistant_clear_history,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

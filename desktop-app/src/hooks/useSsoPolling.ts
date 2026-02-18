@@ -23,30 +23,37 @@ export function useSsoPolling() {
       options: {
         interval: number;
         maxAttempts: number;
+        onError?: (error: unknown) => void;
+        skipImmediate?: boolean;
       }
     ) => {
       clearSsoPolling();
       let attempts = 0;
 
-      ssoPollingRef.current = setInterval(async () => {
+      const runCheck = async () => {
         attempts++;
         try {
           const success = await checkFn();
           if (success) {
             clearSsoPolling();
-            if (isMountedRef.current) {
-              onSuccess();
-            }
+            if (isMountedRef.current) onSuccess();
           }
-        } catch {
-          if (attempts >= options.maxAttempts) {
+        } catch (err) {
+          if (options.onError) {
             clearSsoPolling();
-            if (isMountedRef.current) {
-              onTimeout();
-            }
+            options.onError(err);
+          } else if (attempts >= options.maxAttempts) {
+            clearSsoPolling();
+            if (isMountedRef.current) onTimeout();
           }
         }
-      }, options.interval);
+      };
+
+      // Run check immediately unless skipImmediate is true (e.g., for OAuth device flow that needs full interval wait)
+      if (!options.skipImmediate) {
+        runCheck();
+      }
+      ssoPollingRef.current = setInterval(runCheck, options.interval);
     },
     [clearSsoPolling]
   );

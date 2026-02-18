@@ -28,7 +28,8 @@ describe("useSsoPolling", () => {
       vi.advanceTimersByTime(3000);
     });
 
-    expect(checkFn).toHaveBeenCalledTimes(3);
+    // One run immediately, then one per second at 1s, 2s, 3s
+    expect(checkFn).toHaveBeenCalledTimes(4);
   });
 
   it("stops polling and calls onSuccess when checkFn returns true", async () => {
@@ -48,19 +49,14 @@ describe("useSsoPolling", () => {
       });
     });
 
-    // First tick: checkFn returns false
-    await act(async () => {
-      vi.advanceTimersByTime(1000);
-    });
-    expect(onSuccess).not.toHaveBeenCalled();
-
-    // Second tick: checkFn returns true
+    // First run is immediate (returns false), second at 1s returns true
     await act(async () => {
       vi.advanceTimersByTime(1000);
     });
     expect(onSuccess).toHaveBeenCalledTimes(1);
+    expect(checkFn).toHaveBeenCalledTimes(2);
 
-    // Third tick: should not call checkFn again (polling stopped)
+    // Further ticks: polling stopped, no more checkFn
     await act(async () => {
       vi.advanceTimersByTime(1000);
     });
@@ -108,12 +104,12 @@ describe("useSsoPolling", () => {
       });
     });
 
-    // Only advance 2 ticks out of 5
+    // One run immediately, then at 1s and 2s = 3 runs (under maxAttempts 5)
     await act(async () => {
       vi.advanceTimersByTime(2000);
     });
 
-    expect(checkFn).toHaveBeenCalledTimes(2);
+    expect(checkFn).toHaveBeenCalledTimes(3);
     expect(onTimeout).not.toHaveBeenCalled();
   });
 
@@ -131,11 +127,11 @@ describe("useSsoPolling", () => {
       });
     });
 
-    // One tick
+    // One run immediately, one at 1s
     await act(async () => {
       vi.advanceTimersByTime(1000);
     });
-    expect(checkFn).toHaveBeenCalledTimes(1);
+    expect(checkFn).toHaveBeenCalledTimes(2);
 
     // Clear polling
     act(() => {
@@ -146,7 +142,7 @@ describe("useSsoPolling", () => {
     await act(async () => {
       vi.advanceTimersByTime(5000);
     });
-    expect(checkFn).toHaveBeenCalledTimes(1);
+    expect(checkFn).toHaveBeenCalledTimes(2);
   });
 
   it("does not call callbacks if unmounted via cleanup", async () => {
@@ -202,11 +198,11 @@ describe("useSsoPolling", () => {
     });
 
     await act(async () => {
-      vi.advanceTimersByTime(3000);
+      vi.advanceTimersByTime(2000);
     });
 
-    // Only the second checkFn should be called
-    expect(checkFn1).not.toHaveBeenCalled();
+    // First poll ran once (immediate) before being replaced; second poll runs immediately + at 1s, 2s
+    expect(checkFn1).toHaveBeenCalledTimes(1);
     expect(checkFn2).toHaveBeenCalledTimes(3);
   });
 });

@@ -19,6 +19,7 @@ Desktop app for deploying Databricks workspaces on AWS, Azure, and GCP using Ter
 - GCP service account creation with custom IAM role and impersonation setup
 - Cloud-specific permission validation before deployment
 - Rollback support (terraform destroy with resource cleanup)
+- AI Assistant with contextual help for each screen (GitHub Models free, OpenAI, Claude)
 - Single-instance enforcement (prevents running multiple copies)
 
 ## Prerequisites
@@ -43,6 +44,64 @@ Desktop app for deploying Databricks workspaces on AWS, Azure, and GCP using Ter
 7. Configure workspace (name, region, networking)
 8. Configure Unity Catalog (optional -- auto-detects existing metastore)
 9. Review and deploy
+
+## AI Assistant
+
+The app includes an embedded AI assistant that provides contextual help for each screen.
+
+### Features
+- Context-aware responses based on current screen and app state
+- Markdown-formatted answers with code blocks and links
+- Remembers conversation history (last 20 messages)
+- Privacy-first: your data goes directly to your chosen provider, never through our servers
+
+### Supported Providers
+
+| Provider | Cost | Notes |
+|----------|------|-------|
+| GitHub Models | Free | Recommended. Rate-limited. Requires GitHub PAT with `models:read` permission |
+| OpenAI | Paid | GPT-4o mini. Requires OpenAI API key |
+| Claude | Paid | Claude 3.5 Haiku. Requires Anthropic API key |
+
+### Setup
+
+1. Click the chat icon in the bottom-right corner
+2. Select a provider
+3. Click "Get API Key" to open the provider's key creation page in your browser
+4. Paste your API key and click "Connect"
+
+**GitHub Models (Free):**
+- Create a Fine-grained Personal Access Token at https://github.com/settings/personal-access-tokens/new
+- Set permissions: Account permissions → Models → Read-only
+- Copy and paste the `github_pat_...` token
+
+**OpenAI:**
+- Create an API key at https://platform.openai.com/api-keys
+- Copy and paste the `sk-proj-...` key
+
+**Claude:**
+- Create an API key at https://console.anthropic.com/settings/keys
+- Copy and paste the `sk-ant-...` key
+
+### Model Selection (GitHub Models Only)
+
+GitHub Models users can choose from multiple models:
+1. Click the settings gear icon in the chat header
+2. Select your preferred model (e.g., GPT-4o, Llama, Phi-4)
+3. Click "Save"
+
+The model list is fetched dynamically and cached for 24 hours.
+
+### Rate Limits
+
+**GitHub Models (Free):**
+- Rate limited by requests per minute/day
+- Limits vary by model (larger models have stricter limits)
+- Switch to OpenAI/Claude if you hit limits
+
+**OpenAI/Claude:**
+- Rate limits based on your account tier
+- Check provider documentation for details
 
 ## Deployment Storage
 
@@ -192,6 +251,7 @@ src/
   styles.css             # Global styles
   context/
     WizardContext.tsx    # Wizard state management and shared context
+    AssistantContext.tsx # AI assistant state with wizard integration
   hooks/
     useAwsAuth.ts        # AWS authentication (profiles, SSO, access keys)
     useAzureAuth.ts      # Azure authentication (CLI, service principals)
@@ -200,6 +260,7 @@ src/
     useDeployment.ts     # Deployment orchestration (init, plan, apply, rollback)
     useUnityCatalog.ts   # Unity Catalog metastore detection and configuration
     useWizard.ts         # Wizard navigation and step management
+    useAssistant.ts      # AI assistant chat, auth, model selection
     useSsoPolling.ts     # SSO login polling
   utils/
     variables.ts         # Variable grouping, formatting, suffix generation
@@ -229,6 +290,11 @@ src/
         AzureCredentialsScreen.tsx
         GcpCredentialsScreen.tsx
         DatabricksCredentialsScreen.tsx
+    assistant/
+      AssistantPanel.tsx      # Floating chat panel
+      AssistantSetup.tsx      # Provider selection and API key input
+      AssistantMessage.tsx    # Message rendering with markdown
+      AssistantSettingsModal.tsx  # GitHub model selection dialog
   test/
     setup.ts             # Vitest global setup (mocks @tauri-apps/api)
     hooks/               # Hook unit tests
@@ -246,9 +312,12 @@ src-tauri/
       databricks.rs      # Databricks authentication
       deployment.rs      # Deployment configuration and tfvars generation
       templates.rs       # Template listing and variable parsing
+      assistant.rs       # AI assistant API integration (GitHub/OpenAI/Claude)
     terraform.rs         # Terraform execution (init, plan, apply, destroy)
     dependencies.rs      # CLI detection, version checks, Terraform auto-install
     errors.rs            # Error helpers
+  resources/
+    assistant-knowledge.md   # Embedded knowledge base for AI assistant
   templates/
     aws-simple/          # AWS BYOVPC template (see template README)
     azure-simple/        # Azure VNet injection template (see template README)
@@ -280,6 +349,15 @@ Ensure your identity has metastore admin or the required grants (`CREATE CATALOG
 
 ### GCP destroy fails on VPC deletion
 Databricks creates firewall rules in the VPC that are not managed by Terraform. Delete them manually with `gcloud compute firewall-rules list --filter="network:<vpc-name>" --format="value(name)" | xargs -I {} gcloud compute firewall-rules delete {} --quiet`, then re-run destroy.
+
+### AI Assistant not responding
+Check the error message displayed. Common issues:
+- **GitHub Models:** Token missing `models:read` permission. Create a new Fine-grained PAT with correct permissions.
+- **Rate limit exceeded:** Wait for the limit to reset, or switch to a different provider.
+- **Invalid API key:** Disconnect and reconnect with a fresh key.
+
+### AI Assistant shows "Loading models..." indefinitely
+Disconnect and reconnect. The models list is cached for 24 hours; disconnecting clears the cache.
 
 ### Azure identity validation fails
 Run `az login` and verify you have Databricks Account Admin. Test with:
