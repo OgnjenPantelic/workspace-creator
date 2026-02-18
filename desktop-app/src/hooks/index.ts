@@ -12,3 +12,5 @@ export type { UseDeploymentReturn, DeploymentStep } from "./useDeployment";
 export { useUnityCatalog } from "./useUnityCatalog";
 export type { UseUnityCatalogReturn } from "./useUnityCatalog";
 export { useWizard } from "./useWizard";
+export { useAssistant } from "./useAssistant";
+export type { UseAssistantReturn } from "./useAssistant";

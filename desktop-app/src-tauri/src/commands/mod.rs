@@ -8,6 +8,7 @@
 //! - [`gcp`] - GCP authentication, permission checking, and service account management
 //! - [`templates`] - Template setup, listing, and variable parsing
 
+pub mod assistant;
 pub mod aws;
 pub mod azure;
 pub mod databricks;
@@ -16,6 +17,7 @@ pub mod gcp;
 pub mod templates;
 
 // Re-export all commands so lib.rs can reference them as commands::function_name
+pub use assistant::*;
 pub use aws::*;
 pub use azure::*;
 pub use databricks::*;
@@ -118,7 +120,7 @@ pub struct UCPermissionCheck {
 // ─── Constants ──────────────────────────────────────────────────────────────
 
 /// Increment when embedded templates change to trigger a refresh.
-pub(crate) const TEMPLATES_VERSION: &str = "2.41.0";
+pub(crate) const TEMPLATES_VERSION: &str = "2.41.1";
 
 /// Variables that are automatically set by the app and hidden from the UI form.
 pub(crate) const INTERNAL_VARIABLES: &[&str] = &[

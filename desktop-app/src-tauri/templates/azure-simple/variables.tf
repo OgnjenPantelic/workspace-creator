@@ -126,8 +126,8 @@ variable "workspace_sku" {
   type        = string
   default     = "premium"
   validation {
-    condition     = contains(["standard", "premium", "trial"], var.workspace_sku)
-    error_message = "Workspace SKU must be either standard, premium, or trial."
+    condition     = contains(["premium", "trial"], var.workspace_sku)
+    error_message = "Workspace SKU must be either premium, or trial."
   }
 }
 
