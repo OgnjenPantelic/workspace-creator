@@ -23,7 +23,8 @@ const WelcomeScreen: React.FC = () => {
           </p>
           <p>
             No Terraform experience required. Follow the guided steps, configure your 
-            options, and deploy a production-ready workspace.
+            options, and deploy a production-ready workspace. Use the built-in AI Assistant
+            anytime for contextual help and end-to-end technical support during the process.
           </p>
         </div>
 

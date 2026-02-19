@@ -404,3 +404,418 @@ pub fn check_state_exists(working_dir: &PathBuf) -> bool {
     false
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashMap;
+
+    // ── parse_variables_tf ──────────────────────────────────────────────
+
+    #[test]
+    fn parse_simple_string_variable() {
+        let tf = r#"
+variable "region" {
+  description = "The AWS region"
+  type        = string
+  default     = "us-east-1"
+}
+"#;
+        let vars = parse_variables_tf(tf);
+        assert_eq!(vars.len(), 1);
+        assert_eq!(vars[0].name, "region");
+        assert_eq!(vars[0].description, "The AWS region");
+        assert_eq!(vars[0].default.as_deref(), Some("us-east-1"));
+        assert!(!vars[0].required);
+    }
+
+    #[test]
+    fn parse_required_variable_no_default() {
+        let tf = r#"
+variable "name" {
+  description = "Deployment name"
+  type        = string
+}
+"#;
+        let vars = parse_variables_tf(tf);
+        assert_eq!(vars.len(), 1);
+        assert!(vars[0].required);
+        assert!(vars[0].default.is_none());
+    }
+
+    #[test]
+    fn parse_sensitive_variable() {
+        let tf = r#"
+variable "db_password" {
+  description = "Database password"
+  type        = string
+  sensitive   = true
+}
+"#;
+        let vars = parse_variables_tf(tf);
+        assert_eq!(vars.len(), 1);
+        assert!(vars[0].sensitive);
+    }
+
+    #[test]
+    fn parse_bool_variable() {
+        let tf = r#"
+variable "enable_logging" {
+  description = "Enable logging"
+  type        = bool
+  default     = true
+}
+"#;
+        let vars = parse_variables_tf(tf);
+        assert_eq!(vars.len(), 1);
+        assert_eq!(vars[0].default.as_deref(), Some("true"));
+    }
+
+    #[test]
+    fn parse_multiple_variables() {
+        let tf = r#"
+variable "region" {
+  description = "AWS region"
+  type        = string
+  default     = "us-east-1"
+}
+
+variable "instance_type" {
+  description = "EC2 instance type"
+  type        = string
+}
+
+variable "count" {
+  description = "Number of instances"
+  type        = number
+  default     = 1
+}
+"#;
+        let vars = parse_variables_tf(tf);
+        assert_eq!(vars.len(), 3);
+        assert_eq!(vars[0].name, "region");
+        assert_eq!(vars[1].name, "instance_type");
+        assert_eq!(vars[2].name, "count");
+    }
+
+    #[test]
+    fn parse_multiline_map_default() {
+        let tf = r#"
+variable "tags" {
+  description = "Resource tags"
+  type        = map(string)
+  default     = {
+    env  = "prod"
+    team = "data"
+  }
+}
+"#;
+        let vars = parse_variables_tf(tf);
+        assert_eq!(vars.len(), 1);
+        assert_eq!(vars[0].name, "tags");
+        assert!(!vars[0].required);
+        assert!(vars[0].default.is_some());
+    }
+
+    #[test]
+    fn parse_multiline_list_default() {
+        let tf = r#"
+variable "subnets" {
+  description = "Subnet list"
+  type        = list(string)
+  default     = [
+    "subnet-1",
+    "subnet-2"
+  ]
+}
+"#;
+        let vars = parse_variables_tf(tf);
+        assert_eq!(vars.len(), 1);
+        assert!(!vars[0].required);
+        assert!(vars[0].default.is_some());
+    }
+
+    #[test]
+    fn parse_empty_content() {
+        let vars = parse_variables_tf("");
+        assert!(vars.is_empty());
+    }
+
+    #[test]
+    fn parse_no_variables() {
+        let tf = r#"
+resource "aws_instance" "web" {
+  ami           = "ami-12345"
+  instance_type = "t2.micro"
+}
+"#;
+        let vars = parse_variables_tf(tf);
+        assert!(vars.is_empty());
+    }
+
+    // ── generate_tfvars ─────────────────────────────────────────────────
+
+    #[test]
+    fn generate_tfvars_string_value() {
+        let vars = vec![TerraformVariable {
+            name: "region".to_string(),
+            description: String::new(),
+            var_type: "string".to_string(),
+            default: None,
+            required: true,
+            sensitive: false,
+            validation: None,
+        }];
+        let mut values = HashMap::new();
+        values.insert("region".to_string(), serde_json::json!("us-east-1"));
+        let result = generate_tfvars(&values, &vars);
+        assert_eq!(result, "region = \"us-east-1\"");
+    }
+
+    #[test]
+    fn generate_tfvars_bool_value() {
+        let vars = vec![TerraformVariable {
+            name: "enabled".to_string(),
+            description: String::new(),
+            var_type: "bool".to_string(),
+            default: None,
+            required: true,
+            sensitive: false,
+            validation: None,
+        }];
+        let mut values = HashMap::new();
+        values.insert("enabled".to_string(), serde_json::json!(true));
+        let result = generate_tfvars(&values, &vars);
+        assert_eq!(result, "enabled = true");
+    }
+
+    #[test]
+    fn generate_tfvars_number_value() {
+        let vars = vec![TerraformVariable {
+            name: "count".to_string(),
+            description: String::new(),
+            var_type: "number".to_string(),
+            default: None,
+            required: true,
+            sensitive: false,
+            validation: None,
+        }];
+        let mut values = HashMap::new();
+        values.insert("count".to_string(), serde_json::json!(42));
+        let result = generate_tfvars(&values, &vars);
+        assert_eq!(result, "count = 42");
+    }
+
+    #[test]
+    fn generate_tfvars_list_of_strings() {
+        let vars = vec![TerraformVariable {
+            name: "zones".to_string(),
+            description: String::new(),
+            var_type: "list(string)".to_string(),
+            default: None,
+            required: true,
+            sensitive: false,
+            validation: None,
+        }];
+        let mut values = HashMap::new();
+        values.insert("zones".to_string(), serde_json::json!(["us-east-1a", "us-east-1b"]));
+        let result = generate_tfvars(&values, &vars);
+        assert_eq!(result, "zones = [\"us-east-1a\", \"us-east-1b\"]");
+    }
+
+    #[test]
+    fn generate_tfvars_map_value() {
+        let vars = vec![TerraformVariable {
+            name: "tags".to_string(),
+            description: String::new(),
+            var_type: "map(string)".to_string(),
+            default: None,
+            required: true,
+            sensitive: false,
+            validation: None,
+        }];
+        let mut values = HashMap::new();
+        let mut map = serde_json::Map::new();
+        map.insert("env".to_string(), serde_json::json!("prod"));
+        values.insert("tags".to_string(), serde_json::Value::Object(map));
+        let result = generate_tfvars(&values, &vars);
+        assert!(result.contains("tags = {"));
+        assert!(result.contains("\"env\" = \"prod\""));
+    }
+
+    #[test]
+    fn generate_tfvars_empty_map() {
+        let vars = vec![TerraformVariable {
+            name: "tags".to_string(),
+            description: String::new(),
+            var_type: "map(string)".to_string(),
+            default: None,
+            required: true,
+            sensitive: false,
+            validation: None,
+        }];
+        let mut values = HashMap::new();
+        values.insert("tags".to_string(), serde_json::Value::Object(serde_json::Map::new()));
+        let result = generate_tfvars(&values, &vars);
+        assert_eq!(result, "tags = {}");
+    }
+
+    #[test]
+    fn generate_tfvars_bool_string_for_bool_type() {
+        let vars = vec![TerraformVariable {
+            name: "flag".to_string(),
+            description: String::new(),
+            var_type: "bool".to_string(),
+            default: None,
+            required: true,
+            sensitive: false,
+            validation: None,
+        }];
+        let mut values = HashMap::new();
+        values.insert("flag".to_string(), serde_json::json!("true"));
+        let result = generate_tfvars(&values, &vars);
+        assert_eq!(result, "flag = true");
+    }
+
+    #[test]
+    fn generate_tfvars_skips_empty_required_string() {
+        let vars = vec![TerraformVariable {
+            name: "name".to_string(),
+            description: String::new(),
+            var_type: "string".to_string(),
+            default: None,
+            required: true,
+            sensitive: false,
+            validation: None,
+        }];
+        let mut values = HashMap::new();
+        values.insert("name".to_string(), serde_json::json!(""));
+        let result = generate_tfvars(&values, &vars);
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn generate_tfvars_skips_missing_values() {
+        let vars = vec![TerraformVariable {
+            name: "region".to_string(),
+            description: String::new(),
+            var_type: "string".to_string(),
+            default: None,
+            required: true,
+            sensitive: false,
+            validation: None,
+        }];
+        let values = HashMap::new();
+        let result = generate_tfvars(&values, &vars);
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn generate_tfvars_multiple_variables() {
+        let vars = vec![
+            TerraformVariable {
+                name: "region".to_string(),
+                description: String::new(),
+                var_type: "string".to_string(),
+                default: None,
+                required: true,
+                sensitive: false,
+                validation: None,
+            },
+            TerraformVariable {
+                name: "count".to_string(),
+                description: String::new(),
+                var_type: "number".to_string(),
+                default: None,
+                required: true,
+                sensitive: false,
+                validation: None,
+            },
+        ];
+        let mut values = HashMap::new();
+        values.insert("region".to_string(), serde_json::json!("eu-west-1"));
+        values.insert("count".to_string(), serde_json::json!(3));
+        let result = generate_tfvars(&values, &vars);
+        assert!(result.contains("region = \"eu-west-1\""));
+        assert!(result.contains("count = 3"));
+    }
+
+    #[test]
+    fn generate_tfvars_map_string_parseable() {
+        let vars = vec![TerraformVariable {
+            name: "tags".to_string(),
+            description: String::new(),
+            var_type: "map(string)".to_string(),
+            default: None,
+            required: true,
+            sensitive: false,
+            validation: None,
+        }];
+        let mut values = HashMap::new();
+        values.insert("tags".to_string(), serde_json::json!("{\"env\":\"prod\"}"));
+        let result = generate_tfvars(&values, &vars);
+        assert!(result.contains("tags = {"));
+        assert!(result.contains("\"env\" = \"prod\""));
+    }
+
+    #[test]
+    fn generate_tfvars_list_string_parseable() {
+        let vars = vec![TerraformVariable {
+            name: "zones".to_string(),
+            description: String::new(),
+            var_type: "list(string)".to_string(),
+            default: None,
+            required: true,
+            sensitive: false,
+            validation: None,
+        }];
+        let mut values = HashMap::new();
+        values.insert("zones".to_string(), serde_json::json!("[\"a\",\"b\"]"));
+        let result = generate_tfvars(&values, &vars);
+        assert_eq!(result, "zones = [\"a\", \"b\"]");
+    }
+
+    // ── check_state_exists (Phase 2 — filesystem with tempdir) ──────────
+
+    #[test]
+    fn check_state_exists_no_file() {
+        let dir = tempfile::tempdir().unwrap();
+        assert!(!check_state_exists(&dir.path().to_path_buf()));
+    }
+
+    #[test]
+    fn check_state_exists_empty_file() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(dir.path().join("terraform.tfstate"), "").unwrap();
+        assert!(!check_state_exists(&dir.path().to_path_buf()));
+    }
+
+    #[test]
+    fn check_state_exists_no_resources() {
+        let dir = tempfile::tempdir().unwrap();
+        let content = r#"{ "version": 4, "serial": 1 }"#;
+        fs::write(dir.path().join("terraform.tfstate"), content).unwrap();
+        assert!(!check_state_exists(&dir.path().to_path_buf()));
+    }
+
+    #[test]
+    fn check_state_exists_with_resources() {
+        let dir = tempfile::tempdir().unwrap();
+        let content = r#"{
+            "version": 4,
+            "resources": [
+                { "type": "aws_instance", "name": "web" }
+            ]
+        }"#;
+        fs::write(dir.path().join("terraform.tfstate"), content).unwrap();
+        assert!(check_state_exists(&dir.path().to_path_buf()));
+    }
+
+    #[test]
+    fn check_state_exists_resources_keyword_but_no_type() {
+        let dir = tempfile::tempdir().unwrap();
+        let content = r#"{ "resources": [] }"#;
+        fs::write(dir.path().join("terraform.tfstate"), content).unwrap();
+        assert!(!check_state_exists(&dir.path().to_path_buf()));
+    }
+}
+

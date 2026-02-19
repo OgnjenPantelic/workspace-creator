@@ -365,3 +365,62 @@ pub async fn check_aws_permissions(
         is_warning: true,
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ── validate_aws_profile_name ───────────────────────────────────────
+
+    #[test]
+    fn valid_profile_name_simple() {
+        assert!(validate_aws_profile_name("default"));
+    }
+
+    #[test]
+    fn valid_profile_name_with_hyphens() {
+        assert!(validate_aws_profile_name("my-profile"));
+    }
+
+    #[test]
+    fn valid_profile_name_with_underscores() {
+        assert!(validate_aws_profile_name("my_profile"));
+    }
+
+    #[test]
+    fn valid_profile_name_with_dots() {
+        assert!(validate_aws_profile_name("dev.us-east-1"));
+    }
+
+    #[test]
+    fn invalid_profile_name_empty() {
+        assert!(!validate_aws_profile_name(""));
+    }
+
+    #[test]
+    fn invalid_profile_name_too_long() {
+        let long = "a".repeat(65);
+        assert!(!validate_aws_profile_name(&long));
+    }
+
+    #[test]
+    fn valid_profile_name_max_length() {
+        let exact = "a".repeat(64);
+        assert!(validate_aws_profile_name(&exact));
+    }
+
+    #[test]
+    fn invalid_profile_name_special_chars() {
+        assert!(!validate_aws_profile_name("profile;rm -rf /"));
+    }
+
+    #[test]
+    fn invalid_profile_name_spaces() {
+        assert!(!validate_aws_profile_name("my profile"));
+    }
+
+    #[test]
+    fn invalid_profile_name_path_traversal() {
+        assert!(!validate_aws_profile_name("../etc/passwd"));
+    }
+}

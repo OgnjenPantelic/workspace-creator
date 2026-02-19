@@ -1608,8 +1608,14 @@ input[type="checkbox"] {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  margin-top: 16px;
+  margin-top: 0;
   width: 100%;
+  position: sticky;
+  top: -16px;
+  z-index: 2;
+  padding: 16px 0 10px;
+  background: #242426;
+  border-bottom: 1px solid #35353a;
 }
 
 .assistant-sample-question {
@@ -1749,6 +1755,10 @@ input[type="checkbox"] {
   border-radius: 4px;
   font-size: 12px;
   color: #ff9d76;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  max-width: 100%;
 }
 
 .assistant-code-block {

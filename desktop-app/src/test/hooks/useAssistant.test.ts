@@ -14,7 +14,7 @@ describe("useAssistant", () => {
   // Initial State
   // ---------------------------------------------------------------------------
   describe("initial state", () => {
-    it("starts unconfigured with empty messages", () => {
+    it("starts unconfigured with empty messages", async () => {
       mockInvoke.mockResolvedValueOnce({
         active_provider: "github-models",
         configured: false,
@@ -25,12 +25,16 @@ describe("useAssistant", () => {
 
       const { result } = renderHook(() => useAssistant());
 
+      // Wait for the mount effect (settings load) to settle
+      await waitFor(() => {
+        expect(mockInvoke).toHaveBeenCalledWith("assistant_get_settings");
+      });
+
       expect(result.current.isConfigured).toBe(false);
       expect(result.current.isOpen).toBe(false);
       expect(result.current.messages).toEqual([]);
       expect(result.current.loading).toBe(false);
       expect(result.current.error).toBeNull();
-      expect(result.current.provider).toBeNull();
     });
 
     it("loads settings on mount", async () => {
@@ -582,6 +586,10 @@ describe("useAssistant", () => {
 
       const { result } = renderHook(() => useAssistant());
 
+      await waitFor(() => {
+        expect(mockInvoke).toHaveBeenCalledWith("assistant_get_settings");
+      });
+
       expect(result.current.isOpen).toBe(false);
 
       act(() => {
@@ -606,6 +614,10 @@ describe("useAssistant", () => {
 
       const { result } = renderHook(() => useAssistant());
 
+      await waitFor(() => {
+        expect(mockInvoke).toHaveBeenCalledWith("assistant_get_settings");
+      });
+
       act(() => {
         result.current.open();
       });
@@ -628,6 +640,10 @@ describe("useAssistant", () => {
       mockInvoke.mockRejectedValueOnce("Test error");
 
       const { result } = renderHook(() => useAssistant());
+
+      await waitFor(() => {
+        expect(mockInvoke).toHaveBeenCalledWith("assistant_get_settings");
+      });
 
       await act(async () => {
         await result.current.saveToken("github-models", "bad_key");

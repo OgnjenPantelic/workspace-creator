@@ -187,3 +187,240 @@ pub fn get_template_variables(
 
     Ok(filtered_variables)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    fn real_templates_dir() -> PathBuf {
+        let manifest_dir = env!("CARGO_MANIFEST_DIR");
+        PathBuf::from(manifest_dir).join("templates")
+    }
+
+    // ── Real template parsing: azure-simple ─────────────────────────────
+
+    #[test]
+    fn parse_azure_simple_template() {
+        let variables_path = real_templates_dir().join("azure-simple").join("variables.tf");
+        let content = fs::read_to_string(&variables_path)
+            .expect("azure-simple/variables.tf should exist");
+        let vars = terraform::parse_variables_tf(&content);
+
+        assert!(vars.len() >= 20, "azure-simple should have many variables, got {}", vars.len());
+
+        let names: Vec<&str> = vars.iter().map(|v| v.name.as_str()).collect();
+        assert!(names.contains(&"tenant_id"));
+        assert!(names.contains(&"azure_subscription_id"));
+        assert!(names.contains(&"workspace_name"));
+        assert!(names.contains(&"databricks_account_id"));
+        assert!(names.contains(&"location"));
+        assert!(names.contains(&"resource_group_name"));
+        assert!(names.contains(&"cidr"));
+    }
+
+    #[test]
+    fn azure_simple_required_variables() {
+        let variables_path = real_templates_dir().join("azure-simple").join("variables.tf");
+        let content = fs::read_to_string(&variables_path).unwrap();
+        let vars = terraform::parse_variables_tf(&content);
+
+        let tenant_id = vars.iter().find(|v| v.name == "tenant_id").unwrap();
+        assert!(tenant_id.required, "tenant_id should be required (no default)");
+
+        let workspace_name = vars.iter().find(|v| v.name == "workspace_name").unwrap();
+        assert!(workspace_name.required, "workspace_name should be required");
+    }
+
+    #[test]
+    fn azure_simple_optional_variables() {
+        let variables_path = real_templates_dir().join("azure-simple").join("variables.tf");
+        let content = fs::read_to_string(&variables_path).unwrap();
+        let vars = terraform::parse_variables_tf(&content);
+
+        let create_rg = vars.iter().find(|v| v.name == "create_new_resource_group").unwrap();
+        assert!(!create_rg.required, "create_new_resource_group has a default");
+        assert_eq!(create_rg.default.as_deref(), Some("true"));
+
+        let cidr = vars.iter().find(|v| v.name == "cidr").unwrap();
+        assert!(!cidr.required, "cidr has a default");
+        assert_eq!(cidr.default.as_deref(), Some("10.0.0.0/20"));
+    }
+
+    #[test]
+    fn azure_simple_sensitive_variables() {
+        let variables_path = real_templates_dir().join("azure-simple").join("variables.tf");
+        let content = fs::read_to_string(&variables_path).unwrap();
+        let vars = terraform::parse_variables_tf(&content);
+
+        let account_id = vars.iter().find(|v| v.name == "databricks_account_id").unwrap();
+        assert!(account_id.sensitive, "databricks_account_id should be sensitive");
+
+        let client_secret = vars.iter().find(|v| v.name == "databricks_client_secret").unwrap();
+        assert!(client_secret.sensitive, "databricks_client_secret should be sensitive");
+    }
+
+    #[test]
+    fn azure_simple_map_and_bool_types() {
+        let variables_path = real_templates_dir().join("azure-simple").join("variables.tf");
+        let content = fs::read_to_string(&variables_path).unwrap();
+        let vars = terraform::parse_variables_tf(&content);
+
+        let tags = vars.iter().find(|v| v.name == "tags").unwrap();
+        assert!(tags.var_type.contains("map"), "tags should be map type");
+
+        let create_vnet = vars.iter().find(|v| v.name == "create_new_vnet").unwrap();
+        assert!(create_vnet.var_type.contains("bool"), "create_new_vnet should be bool type");
+    }
+
+    // ── Real template parsing: aws-simple ───────────────────────────────
+
+    #[test]
+    fn parse_aws_simple_template() {
+        let variables_path = real_templates_dir().join("aws-simple").join("variables.tf");
+        let content = fs::read_to_string(&variables_path)
+            .expect("aws-simple/variables.tf should exist");
+        let vars = terraform::parse_variables_tf(&content);
+
+        assert!(!vars.is_empty(), "aws-simple should have variables");
+
+        let names: Vec<&str> = vars.iter().map(|v| v.name.as_str()).collect();
+        assert!(names.contains(&"databricks_account_id"));
+    }
+
+    // ── Real template parsing: gcp-simple ───────────────────────────────
+
+    #[test]
+    fn parse_gcp_simple_template() {
+        let variables_path = real_templates_dir().join("gcp-simple").join("variables.tf");
+        let content = fs::read_to_string(&variables_path)
+            .expect("gcp-simple/variables.tf should exist");
+        let vars = terraform::parse_variables_tf(&content);
+
+        assert!(!vars.is_empty(), "gcp-simple should have variables");
+
+        let names: Vec<&str> = vars.iter().map(|v| v.name.as_str()).collect();
+        assert!(names.contains(&"google_project_name"));
+        assert!(names.contains(&"gcp_auth_method"));
+        assert!(names.contains(&"google_credentials_json"));
+    }
+
+    // ── INTERNAL_VARIABLES filtering ────────────────────────────────────
+
+    #[test]
+    fn internal_variables_filtered_from_gcp() {
+        let variables_path = real_templates_dir().join("gcp-simple").join("variables.tf");
+        let content = fs::read_to_string(&variables_path).unwrap();
+        let all_vars = terraform::parse_variables_tf(&content);
+
+        let filtered: Vec<_> = all_vars
+            .into_iter()
+            .filter(|v| !INTERNAL_VARIABLES.contains(&v.name.as_str()))
+            .collect();
+
+        let filtered_names: Vec<&str> = filtered.iter().map(|v| v.name.as_str()).collect();
+        assert!(!filtered_names.contains(&"gcp_auth_method"), "gcp_auth_method should be filtered");
+        assert!(!filtered_names.contains(&"google_credentials_json"), "google_credentials_json should be filtered");
+        assert!(filtered_names.contains(&"google_project_name"), "google_project_name should NOT be filtered");
+    }
+
+    #[test]
+    fn internal_variables_no_effect_on_azure() {
+        let variables_path = real_templates_dir().join("azure-simple").join("variables.tf");
+        let content = fs::read_to_string(&variables_path).unwrap();
+        let all_vars = terraform::parse_variables_tf(&content);
+        let all_count = all_vars.len();
+
+        let filtered: Vec<_> = all_vars
+            .into_iter()
+            .filter(|v| !INTERNAL_VARIABLES.contains(&v.name.as_str()))
+            .collect();
+
+        assert_eq!(filtered.len(), all_count, "No azure variables should be filtered");
+    }
+
+    // ── Template copy + parse integration ───────────────────────────────
+
+    #[test]
+    fn copy_template_and_parse_variables() {
+        let template_src = real_templates_dir().join("azure-simple");
+        let tmp = tempfile::tempdir().unwrap();
+        let deployment_dir = tmp.path().join("my-deployment");
+
+        copy_dir_all(&template_src, &deployment_dir).unwrap();
+
+        let vars_path = deployment_dir.join("variables.tf");
+        assert!(vars_path.exists(), "variables.tf should exist after copy");
+
+        let content = fs::read_to_string(&vars_path).unwrap();
+        let vars = terraform::parse_variables_tf(&content);
+        assert!(vars.len() >= 20, "parsed variables should match source");
+    }
+
+    // ── Template copy + generate tfvars integration ─────────────────────
+
+    #[test]
+    fn copy_template_and_generate_tfvars() {
+        let template_src = real_templates_dir().join("azure-simple");
+        let tmp = tempfile::tempdir().unwrap();
+        let deployment_dir = tmp.path().join("my-deploy");
+
+        copy_dir_all(&template_src, &deployment_dir).unwrap();
+
+        let content = fs::read_to_string(deployment_dir.join("variables.tf")).unwrap();
+        let variables = terraform::parse_variables_tf(&content);
+
+        let mut values = std::collections::HashMap::new();
+        values.insert("tenant_id".to_string(), serde_json::json!("my-tenant-id"));
+        values.insert("azure_subscription_id".to_string(), serde_json::json!("my-sub-id"));
+        values.insert("workspace_name".to_string(), serde_json::json!("test-workspace"));
+        values.insert("databricks_account_id".to_string(), serde_json::json!("acc-123"));
+        values.insert("resource_group_name".to_string(), serde_json::json!("rg-test"));
+        values.insert("location".to_string(), serde_json::json!("eastus"));
+        values.insert("root_storage_name".to_string(), serde_json::json!("rootstorage"));
+        values.insert("admin_user".to_string(), serde_json::json!("admin@test.com"));
+        values.insert("subnet_public_cidr".to_string(), serde_json::json!("10.0.0.0/22"));
+        values.insert("subnet_private_cidr".to_string(), serde_json::json!("10.0.4.0/22"));
+
+        let tfvars_content = terraform::generate_tfvars(&values, &variables);
+        let tfvars_path = deployment_dir.join("terraform.tfvars");
+        fs::write(&tfvars_path, &tfvars_content).unwrap();
+
+        let written = fs::read_to_string(&tfvars_path).unwrap();
+        assert!(written.contains("tenant_id = \"my-tenant-id\""));
+        assert!(written.contains("workspace_name = \"test-workspace\""));
+        assert!(written.contains("location = \"eastus\""));
+        assert!(written.contains("admin_user = \"admin@test.com\""));
+        assert!(written.contains("subnet_public_cidr = \"10.0.0.0/22\""));
+    }
+
+    #[test]
+    fn generate_tfvars_with_bool_and_map_values() {
+        let template_src = real_templates_dir().join("azure-simple");
+        let tmp = tempfile::tempdir().unwrap();
+        let deployment_dir = tmp.path().join("deploy-2");
+
+        copy_dir_all(&template_src, &deployment_dir).unwrap();
+
+        let content = fs::read_to_string(deployment_dir.join("variables.tf")).unwrap();
+        let variables = terraform::parse_variables_tf(&content);
+
+        let mut values = std::collections::HashMap::new();
+        values.insert("tenant_id".to_string(), serde_json::json!("tid"));
+        values.insert("azure_subscription_id".to_string(), serde_json::json!("sid"));
+        values.insert("workspace_name".to_string(), serde_json::json!("ws"));
+        values.insert("databricks_account_id".to_string(), serde_json::json!("acc"));
+        values.insert("resource_group_name".to_string(), serde_json::json!("rg"));
+        values.insert("location".to_string(), serde_json::json!("westeurope"));
+        values.insert("root_storage_name".to_string(), serde_json::json!("storage"));
+        values.insert("admin_user".to_string(), serde_json::json!("admin@test.com"));
+        values.insert("subnet_public_cidr".to_string(), serde_json::json!("10.0.0.0/22"));
+        values.insert("subnet_private_cidr".to_string(), serde_json::json!("10.0.4.0/22"));
+        values.insert("create_new_vnet".to_string(), serde_json::json!(false));
+        values.insert("create_unity_catalog".to_string(), serde_json::json!(true));
+
+        let tfvars = terraform::generate_tfvars(&values, &variables);
+        assert!(tfvars.contains("create_new_vnet = false"));
+        assert!(tfvars.contains("create_unity_catalog = true"));
+    }
+}

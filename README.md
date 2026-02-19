@@ -1,8 +1,8 @@
 # Workspace Creator
 
-**Version:** 1.0.8
+Desktop app and tools for deploying Databricks workspaces across AWS, Azure, and GCP with Unity Catalog, automated Terraform setup, Azure identity support, and an embedded AI assistant.
 
-Desktop app and tools for deploying Databricks workspaces across AWS, Azure, and GCP with Unity Catalog, automated Terraform setup, and Azure identity support.
+The AI assistant provides context-aware help for each step of the deployment wizard. It supports GitHub Models (free), OpenAI, and Claude as providers. See [desktop-app/README.md](desktop-app/README.md#ai-assistant) for setup instructions.
 
 ## Components
 

@@ -1,6 +1,7 @@
 //! Databricks authentication and Unity Catalog permission commands.
 
 use super::debug_log;
+use super::{databricks_accounts_host, http_client, is_valid_uuid, mask_sensitive_id};
 use super::{CloudCredentials, MetastoreInfo, UCPermissionCheck};
 use crate::dependencies;
 use serde::Serialize;
@@ -22,11 +23,7 @@ pub async fn databricks_cli_login(cloud: String, account_id: String) -> Result<S
     let cli_path = dependencies::find_databricks_cli_path()
         .ok_or_else(|| crate::errors::cli_not_found("Databricks CLI"))?;
 
-    let host = match cloud.as_str() {
-        "azure" => "https://accounts.azuredatabricks.net",
-        "gcp" => "https://accounts.gcp.databricks.com",
-        _ => "https://accounts.cloud.databricks.com",
-    };
+    let host = format!("https://{}", databricks_accounts_host(&cloud));
 
     let profile_name = format!("deployer-{}", &account_id[..8.min(account_id.len())]);
 
@@ -39,7 +36,7 @@ pub async fn databricks_cli_login(cloud: String, account_id: String) -> Result<S
                     if let Some(obj) = cache.as_object_mut() {
                         let keys_to_remove: Vec<String> = obj
                             .keys()
-                            .filter(|k| k.contains(&account_id) || k.contains(host))
+                            .filter(|k| k.contains(&account_id) || k.contains(&host))
                             .cloned()
                             .collect();
 
@@ -61,7 +58,7 @@ pub async fn databricks_cli_login(cloud: String, account_id: String) -> Result<S
             "auth",
             "login",
             "--host",
-            host,
+            &host,
             "--account-id",
             &account_id,
             "--profile",
@@ -143,20 +140,16 @@ pub fn create_databricks_sp_profile(
     client_id: String,
     client_secret: String,
 ) -> Result<String, String> {
-    let host = match cloud.as_str() {
-        "aws" => "https://accounts.cloud.databricks.com",
-        "azure" => "https://accounts.azuredatabricks.net",
-        "gcp" => "https://accounts.gcp.databricks.com",
-        _ => return Err(format!("Unsupported cloud: {}", cloud)),
-    };
+    let host = format!("https://{}", databricks_accounts_host(&cloud));
 
     let profile_name = format!("deployer-sp-{}", &account_id[..8.min(account_id.len())]);
 
-    let config_path = dependencies::get_databricks_config_path().unwrap_or_else(|| {
-        dirs::home_dir()
+    let config_path = match dependencies::get_databricks_config_path() {
+        Some(p) => p,
+        None => dirs::home_dir()
             .map(|h| h.join(".databrickscfg"))
-            .expect("Could not determine home directory")
-    });
+            .ok_or_else(|| "Could not determine home directory".to_string())?,
+    };
 
     let existing_content = fs::read_to_string(&config_path).unwrap_or_default();
 
@@ -223,21 +216,14 @@ pub async fn validate_databricks_credentials(
     client_secret: String,
     cloud: String,
 ) -> Result<String, String> {
-    let accounts_host = match cloud.as_str() {
-        "azure" => "accounts.azuredatabricks.net",
-        "gcp" => "accounts.gcp.databricks.com",
-        _ => "accounts.cloud.databricks.com",
-    };
+    let accounts_host = databricks_accounts_host(&cloud);
 
     let token_url = format!(
         "https://{}/oidc/accounts/{}/v1/token",
         accounts_host, account_id
     );
 
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(30))
-        .build()
-        .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
+    let client = http_client()?;
 
     let token_response = client
         .post(&token_url)
@@ -319,11 +305,7 @@ pub async fn validate_databricks_profile(
     let cli_path = dependencies::find_databricks_cli_path()
         .ok_or_else(|| crate::errors::cli_not_found("Databricks CLI"))?;
 
-    let accounts_host = match cloud.as_str() {
-        "azure" => "accounts.azuredatabricks.net",
-        "gcp" => "accounts.gcp.databricks.com",
-        _ => "accounts.cloud.databricks.com",
-    };
+    let accounts_host = databricks_accounts_host(&cloud);
 
     // Use the CLI to list users (requires account admin access)
     let output = std::process::Command::new(&cli_path)
@@ -365,14 +347,27 @@ pub async fn validate_databricks_profile(
 
 // ─── Unity Catalog ──────────────────────────────────────────────────────────
 
+/// Normalize a region string for case-/punctuation-insensitive comparison.
+fn normalize_region(s: &str) -> String {
+    s.to_lowercase().replace(' ', "").replace('-', "")
+}
+
+/// Find the first metastore in a JSON array whose region matches (normalized).
+fn find_metastore_for_region<'a>(
+    metastores: Option<&'a Vec<serde_json::Value>>,
+    region: &str,
+) -> Option<&'a serde_json::Value> {
+    let region_normalized = normalize_region(region);
+    metastores?.iter().find(|m| {
+        let mr = m["region"].as_str().unwrap_or("");
+        normalize_region(mr) == region_normalized
+    })
+}
+
 /// Generate a message about metastore ownership for permission guidance.
 fn get_metastore_owner_info(metastore_owner: &str, credentials: &CloudCredentials) -> String {
     let is_user = metastore_owner.contains('@');
-    let is_uuid = metastore_owner.len() == 36
-        && metastore_owner.chars().filter(|c| *c == '-').count() == 4
-        && metastore_owner
-            .chars()
-            .all(|c| c.is_ascii_hexdigit() || c == '-');
+    let is_uuid = is_valid_uuid(metastore_owner);
 
     // Determine the current user/SP identity based on active authentication method
     // Priority: GCP service account (JSON or email) > Azure user > Databricks SP > Databricks profile
@@ -508,17 +503,17 @@ pub async fn check_uc_permissions(
                 let azure_token = String::from_utf8_lossy(&output.stdout).trim().to_string();
                 
                 // Use the Azure AD token directly for metastores API (no token exchange needed)
-                let client = reqwest::Client::builder()
-                    .timeout(std::time::Duration::from_secs(30))
-                    .build()
-                    .unwrap_or_default();
+                let client = http_client()?;
                     
                 let metastores_url = format!(
                     "https://accounts.azuredatabricks.net/api/2.0/accounts/{}/metastores",
                     account_id
                 );
                 
-                debug_log!("[check_uc_permissions] Calling metastores API: {}", metastores_url);
+                debug_log!(
+                    "[check_uc_permissions] Calling metastores API for account: {}",
+                    mask_sensitive_id(account_id)
+                );
                 
                 let metastores_response = client
                     .get(&metastores_url)
@@ -529,23 +524,13 @@ pub async fn check_uc_permissions(
                 if let Ok(metastores_resp) = metastores_response {
                     if metastores_resp.status().is_success() {
                         if let Ok(metastores_json) = metastores_resp.json::<serde_json::Value>().await {
-                            debug_log!("[check_uc_permissions] Metastores response: {}", metastores_json);
-                            
                             let metastores = metastores_json["metastores"].as_array();
-                            let region_normalized = region.to_lowercase().replace(" ", "").replace("-", "");
-                            
-                            let matching_metastore = metastores.and_then(|arr| {
-                                arr.iter().find(|m| {
-                                    let metastore_region = m["region"].as_str().unwrap_or("");
-                                    let metastore_region_normalized = metastore_region
-                                        .to_lowercase()
-                                        .replace(" ", "")
-                                        .replace("-", "");
-                                    metastore_region_normalized == region_normalized
-                                })
-                            });
-                            
-                            if let Some(metastore) = matching_metastore {
+                            debug_log!(
+                                "[check_uc_permissions] Metastores API success: found {} metastore(s)",
+                                metastores.map(|arr| arr.len()).unwrap_or(0)
+                            );
+
+                            if let Some(metastore) = find_metastore_for_region(metastores, &region) {
                                 let metastore_id = metastore["metastore_id"].as_str().unwrap_or("");
                                 let metastore_name = metastore["name"].as_str().unwrap_or("");
                                 let metastore_owner = metastore["owner"].as_str().unwrap_or("");
@@ -631,20 +616,8 @@ pub async fn check_uc_permissions(
                     if let Ok(metastores_json) =
                         serde_json::from_str::<serde_json::Value>(&stdout)
                     {
-                        let region_normalized =
-                            region.to_lowercase().replace(" ", "").replace("-", "");
-
                         if let Some(arr) = metastores_json.as_array() {
-                            let matching_metastore = arr.iter().find(|m| {
-                                let metastore_region = m["region"].as_str().unwrap_or("");
-                                let metastore_region_normalized = metastore_region
-                                    .to_lowercase()
-                                    .replace(" ", "")
-                                    .replace("-", "");
-                                metastore_region_normalized == region_normalized
-                            });
-
-                            if let Some(metastore) = matching_metastore {
+                            if let Some(metastore) = find_metastore_for_region(Some(arr), &region) {
                                 let metastore_id =
                                     metastore["metastore_id"].as_str().unwrap_or("");
                                 let metastore_name = metastore["name"].as_str().unwrap_or("");
@@ -732,10 +705,7 @@ pub async fn check_uc_permissions(
 
                     if let Ok(encoding_key) = EncodingKey::from_rsa_pem(key.as_bytes()) {
                         if let Ok(assertion) = encode(&header, &claims, &encoding_key) {
-                            let client = reqwest::Client::builder()
-                                .timeout(std::time::Duration::from_secs(30))
-                                .build()
-                                .unwrap_or_default();
+                            let client = http_client()?;
                             let token_response = client
                                 .post("https://oauth2.googleapis.com/token")
                                 .form(&[
@@ -789,17 +759,17 @@ pub async fn check_uc_permissions(
                     .as_ref()
                     .filter(|s| !s.is_empty())
                 {
-                    let client = reqwest::Client::builder()
-                        .timeout(std::time::Duration::from_secs(30))
-                        .build()
-                        .unwrap_or_default();
+                    let client = http_client()?;
 
                     let generate_token_url = format!(
                         "https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/{}:generateIdToken",
                         sa_email
                     );
 
-                    debug_log!("[check_uc_permissions] Calling: {}", generate_token_url);
+                    debug_log!(
+                        "[check_uc_permissions] Calling IAM generateIdToken for SA: {}",
+                        mask_sensitive_id(sa_email)
+                    );
 
                     let token_response = client
                         .post(&generate_token_url)
@@ -892,18 +862,15 @@ pub async fn check_uc_permissions(
 
         // If we got an ID token, call the Databricks Metastores API
         if let Some(token) = id_token {
-            let client = reqwest::Client::builder()
-                .timeout(std::time::Duration::from_secs(30))
-                .build()
-                .unwrap_or_default();
+            let client = http_client()?;
             let metastores_url = format!(
                 "https://accounts.gcp.databricks.com/api/2.0/accounts/{}/metastores",
                 account_id
             );
 
             debug_log!(
-                "[check_uc_permissions] Calling Databricks Metastores API: {}",
-                metastores_url
+                "[check_uc_permissions] Calling Databricks Metastores API for account: {}",
+                mask_sensitive_id(account_id)
             );
 
             let metastores_response = client.get(&metastores_url).bearer_auth(&token).send().await;
@@ -914,32 +881,19 @@ pub async fn check_uc_permissions(
 
                 if status.is_success() {
                     if let Ok(metastores_json) = resp.json::<serde_json::Value>().await {
-                        debug_log!(
-                            "[check_uc_permissions] Metastores response: {}",
-                            metastores_json
-                        );
-
                         let metastores = metastores_json["metastores"].as_array();
-                        let region_normalized =
-                            region.to_lowercase().replace(" ", "").replace("-", "");
+                        debug_log!(
+                            "[check_uc_permissions] Metastores API success: found {} metastore(s)",
+                            metastores.map(|arr| arr.len()).unwrap_or(0)
+                        );
+                        
                         debug_log!(
                             "[check_uc_permissions] Looking for region: {} (normalized: {})",
                             region,
-                            region_normalized
+                            normalize_region(&region)
                         );
 
-                        let matching_metastore = metastores.and_then(|arr| {
-                            arr.iter().find(|m| {
-                                let metastore_region = m["region"].as_str().unwrap_or("");
-                                let metastore_region_normalized = metastore_region
-                                    .to_lowercase()
-                                    .replace(" ", "")
-                                    .replace("-", "");
-                                metastore_region_normalized == region_normalized
-                            })
-                        });
-
-                        if let Some(metastore) = matching_metastore {
+                        if let Some(metastore) = find_metastore_for_region(metastores, &region) {
                             let metastore_id =
                                 metastore["metastore_id"].as_str().unwrap_or("");
                             let metastore_name = metastore["name"].as_str().unwrap_or("");
@@ -1010,21 +964,14 @@ pub async fn check_uc_permissions(
         .filter(|s| !s.is_empty())
         .ok_or("Client Secret is required for permission check")?;
 
-    let accounts_host = match cloud {
-        "azure" => "accounts.azuredatabricks.net",
-        "gcp" => "accounts.gcp.databricks.com",
-        _ => "accounts.cloud.databricks.com",
-    };
+    let accounts_host = databricks_accounts_host(cloud);
 
     let token_url = format!(
         "https://{}/oidc/accounts/{}/v1/token",
         accounts_host, account_id
     );
 
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(30))
-        .build()
-        .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
+    let client = http_client()?;
 
     let token_response = client
         .post(&token_url)
@@ -1109,20 +1056,8 @@ pub async fn check_uc_permissions(
         .map_err(|e| format!("Failed to parse metastores: {}", e))?;
 
     let metastores = metastores_json["metastores"].as_array();
-    let region_normalized = region.to_lowercase().replace(" ", "").replace("-", "");
 
-    let matching_metastore = metastores.and_then(|arr| {
-        arr.iter().find(|m| {
-            let metastore_region = m["region"].as_str().unwrap_or("");
-            let metastore_region_normalized = metastore_region
-                .to_lowercase()
-                .replace(" ", "")
-                .replace("-", "");
-            metastore_region_normalized == region_normalized
-        })
-    });
-
-    if let Some(metastore) = matching_metastore {
+    if let Some(metastore) = find_metastore_for_region(metastores, &region) {
         let metastore_id = metastore["metastore_id"].as_str().unwrap_or("");
         let metastore_name = metastore["name"].as_str().unwrap_or("");
 
@@ -1269,7 +1204,7 @@ pub async fn validate_azure_databricks_identity(
     let azure_token = String::from_utf8_lossy(&token_output.stdout).trim().to_string();
     
     // Use the Azure AD token directly for SCIM API (no token exchange needed)
-    let client = reqwest::Client::new();
+    let client = http_client()?;
     let users_url = format!(
         "https://accounts.azuredatabricks.net/api/2.0/accounts/{}/scim/v2/Users?count=1",
         account_id
@@ -1298,5 +1233,153 @@ pub async fn validate_azure_databricks_identity(
     }
     
     Ok(format!("Azure identity validated - Account Admin access confirmed for: {}", azure_account_email))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ── normalize_region ────────────────────────────────────────────────
+
+    #[test]
+    fn normalize_region_lowercase() {
+        assert_eq!(normalize_region("US-East-1"), "useast1");
+    }
+
+    #[test]
+    fn normalize_region_removes_spaces() {
+        assert_eq!(normalize_region("East US 2"), "eastus2");
+    }
+
+    #[test]
+    fn normalize_region_removes_hyphens() {
+        assert_eq!(normalize_region("us-west-2"), "uswest2");
+    }
+
+    #[test]
+    fn normalize_region_already_normalized() {
+        assert_eq!(normalize_region("useast1"), "useast1");
+    }
+
+    #[test]
+    fn normalize_region_empty() {
+        assert_eq!(normalize_region(""), "");
+    }
+
+    // ── find_metastore_for_region ───────────────────────────────────────
+
+    #[test]
+    fn find_metastore_matching_region() {
+        let metastores = vec![
+            serde_json::json!({"metastore_id": "ms-1", "region": "us-east-1", "name": "east"}),
+            serde_json::json!({"metastore_id": "ms-2", "region": "eu-west-1", "name": "west"}),
+        ];
+        let result = find_metastore_for_region(Some(&metastores), "us-east-1");
+        assert!(result.is_some());
+        assert_eq!(result.unwrap()["metastore_id"], "ms-1");
+    }
+
+    #[test]
+    fn find_metastore_case_insensitive() {
+        let metastores = vec![
+            serde_json::json!({"metastore_id": "ms-1", "region": "US-East-1", "name": "east"}),
+        ];
+        let result = find_metastore_for_region(Some(&metastores), "us-east-1");
+        assert!(result.is_some());
+    }
+
+    #[test]
+    fn find_metastore_no_match() {
+        let metastores = vec![
+            serde_json::json!({"metastore_id": "ms-1", "region": "eu-west-1", "name": "west"}),
+        ];
+        let result = find_metastore_for_region(Some(&metastores), "us-east-1");
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn find_metastore_none_list() {
+        let result = find_metastore_for_region(None, "us-east-1");
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn find_metastore_empty_list() {
+        let metastores = vec![];
+        let result = find_metastore_for_region(Some(&metastores), "us-east-1");
+        assert!(result.is_none());
+    }
+
+    // ── get_metastore_owner_info ────────────────────────────────────────
+
+    fn default_creds() -> CloudCredentials {
+        CloudCredentials::default()
+    }
+
+    #[test]
+    fn owner_info_user_owner() {
+        let msg = get_metastore_owner_info("admin@company.com", &default_creds());
+        assert!(msg.contains("owned by user 'admin@company.com'"));
+    }
+
+    #[test]
+    fn owner_info_sp_owner_uuid() {
+        let msg = get_metastore_owner_info("550e8400-e29b-41d4-a716-446655440000", &default_creds());
+        assert!(msg.contains("owned by service principal"));
+    }
+
+    #[test]
+    fn owner_info_group_owner() {
+        let msg = get_metastore_owner_info("admins", &default_creds());
+        assert!(msg.contains("owned by group 'admins'"));
+    }
+
+    #[test]
+    fn owner_info_identity_from_azure_email() {
+        let mut creds = default_creds();
+        creds.azure_account_email = Some("user@azure.com".to_string());
+        let msg = get_metastore_owner_info("admin@company.com", &creds);
+        assert!(msg.contains("User 'user@azure.com'"));
+    }
+
+    #[test]
+    fn owner_info_identity_from_databricks_sp() {
+        let mut creds = default_creds();
+        creds.databricks_client_id = Some("sp-client-id".to_string());
+        let msg = get_metastore_owner_info("admins", &creds);
+        assert!(msg.contains("Service principal 'sp-client-id'"));
+    }
+
+    #[test]
+    fn owner_info_identity_from_profile() {
+        let mut creds = default_creds();
+        creds.databricks_profile = Some("deployer-abc12345".to_string());
+        let msg = get_metastore_owner_info("admins", &creds);
+        assert!(msg.contains("Profile 'deployer-abc12345'"));
+    }
+
+    #[test]
+    fn owner_info_gcp_sa_email() {
+        let mut creds = default_creds();
+        creds.gcp_service_account_email = Some("sa@project.iam.gserviceaccount.com".to_string());
+        let msg = get_metastore_owner_info("admin@company.com", &creds);
+        assert!(msg.contains("Service account 'sa@project.iam.gserviceaccount.com'"));
+    }
+
+    #[test]
+    fn owner_info_gcp_credentials_json() {
+        let mut creds = default_creds();
+        creds.gcp_credentials_json = Some(
+            r#"{"client_email": "sa@proj.iam.gserviceaccount.com", "private_key": "key"}"#.to_string(),
+        );
+        let msg = get_metastore_owner_info("admin@company.com", &creds);
+        assert!(msg.contains("Service account 'sa@proj.iam.gserviceaccount.com'"));
+    }
+
+    #[test]
+    fn owner_info_fallback_identity() {
+        let msg = get_metastore_owner_info("admins", &default_creds());
+        assert!(msg.contains("Your Databricks user or service principal"));
+    }
 }
 

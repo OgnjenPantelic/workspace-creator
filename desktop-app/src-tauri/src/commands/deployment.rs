@@ -1,7 +1,7 @@
 //! Terraform deployment, configuration, and lifecycle management commands.
 
 use super::{
-    copy_dir_all, get_deployments_dir, get_templates_dir, sanitize_deployment_name,
+    copy_dir_all, get_deployments_dir, get_templates_dir, opt_non_empty, sanitize_deployment_name,
     sanitize_template_id, CloudCredentials,
 };
 use crate::dependencies::{self, DependencyStatus};
@@ -20,6 +20,12 @@ fn set_env_if_present(env_vars: &mut HashMap<String, String>, key: &str, value: 
             env_vars.insert(key.to_string(), v.clone());
         }
     }
+}
+
+/// Check if Databricks service principal credentials (client_id + client_secret) are present.
+fn has_databricks_sp_creds(credentials: &CloudCredentials) -> bool {
+    opt_non_empty(&credentials.databricks_client_id)
+        && opt_non_empty(&credentials.databricks_client_secret)
 }
 
 /// Build the environment variables map that Terraform needs from credentials.
@@ -54,13 +60,7 @@ fn build_env_vars(credentials: &CloudCredentials) -> HashMap<String, String> {
         }
     }
 
-    let has_credentials_json = credentials
-        .gcp_credentials_json
-        .as_ref()
-        .map(|s| !s.is_empty())
-        .unwrap_or(false);
-
-    if has_credentials_json {
+    if opt_non_empty(&credentials.gcp_credentials_json) {
         set_env_if_present(&mut env_vars, "GOOGLE_CREDENTIALS", &credentials.gcp_credentials_json);
     } else {
         set_env_if_present(
@@ -83,16 +83,7 @@ fn build_env_vars(credentials: &CloudCredentials) -> HashMap<String, String> {
         .unwrap_or("credentials");
 
     let profile_has_sp_creds = databricks_auth_type == "profile"
-        && credentials
-            .databricks_client_id
-            .as_ref()
-            .map(|s| !s.is_empty())
-            .unwrap_or(false)
-        && credentials
-            .databricks_client_secret
-            .as_ref()
-            .map(|s| !s.is_empty())
-            .unwrap_or(false);
+        && has_databricks_sp_creds(credentials);
 
     let is_azure = credentials.cloud.as_deref() == Some("azure");
 
@@ -275,38 +266,25 @@ pub fn save_configuration(
     // Merge credentials into values for terraform variables that need them
     let mut merged_values = values.clone();
     if let Some(creds) = credentials {
-        if let Some(account_id) = creds.databricks_account_id {
+        if let Some(ref account_id) = creds.databricks_account_id {
             if !account_id.is_empty() {
                 merged_values.insert(
                     "databricks_account_id".to_string(),
-                    serde_json::Value::String(account_id),
+                    serde_json::Value::String(account_id.clone()),
                 );
+            }
         }
-    }
 
-    // Map UI auth type to Terraform databricks_auth_type: azure-cli (Azure Identity),
-    // oauth-m2m (service principal), databricks-cli (OAuth/SSO profile)
-    let auth_type = match creds.databricks_auth_type.as_deref() {
+        // Map UI auth type to Terraform databricks_auth_type: azure-cli (Azure Identity),
+        // oauth-m2m (service principal), databricks-cli (OAuth/SSO profile)
+        let auth_type = match creds.databricks_auth_type.as_deref() {
             Some("profile") => {
-                // Check if this is Azure identity mode
                 if creds.cloud.as_deref() == Some("azure") && creds.azure_databricks_use_identity == Some(true) {
                     "azure-cli"
+                } else if has_databricks_sp_creds(&creds) {
+                    "oauth-m2m"
                 } else {
-                    let has_sp_creds = creds
-                        .databricks_client_id
-                        .as_ref()
-                        .map(|s| !s.is_empty())
-                        .unwrap_or(false)
-                        && creds
-                            .databricks_client_secret
-                            .as_ref()
-                            .map(|s| !s.is_empty())
-                            .unwrap_or(false);
-                    if has_sp_creds {
-                        "oauth-m2m"
-                    } else {
-                        "databricks-cli"
-                    }
+                    "databricks-cli"
                 }
             }
             _ => "oauth-m2m",
@@ -380,18 +358,7 @@ pub fn save_configuration(
                 }
             }
 
-            let has_credentials_json = creds
-                .gcp_credentials_json
-                .as_ref()
-                .map(|s| !s.is_empty())
-                .unwrap_or(false);
-            let has_sa_email = creds
-                .gcp_service_account_email
-                .as_ref()
-                .map(|s| !s.is_empty())
-                .unwrap_or(false);
-
-            let gcp_auth_method = if has_credentials_json {
+            let gcp_auth_method = if opt_non_empty(&creds.gcp_credentials_json) {
                 "credentials"
             } else {
                 "impersonation"
@@ -402,18 +369,22 @@ pub fn save_configuration(
                 serde_json::Value::String(gcp_auth_method.to_string()),
             );
 
-            if has_sa_email {
-                merged_values.insert(
-                    "google_service_account_email".to_string(),
-                    serde_json::Value::String(creds.gcp_service_account_email.clone().unwrap()),
-                );
+            if let Some(ref email) = creds.gcp_service_account_email {
+                if !email.is_empty() {
+                    merged_values.insert(
+                        "google_service_account_email".to_string(),
+                        serde_json::Value::String(email.clone()),
+                    );
+                }
             }
 
-            if has_credentials_json {
-                merged_values.insert(
-                    "google_credentials_json".to_string(),
-                    serde_json::Value::String(creds.gcp_credentials_json.clone().unwrap()),
-                );
+            if let Some(ref json) = creds.gcp_credentials_json {
+                if !json.is_empty() {
+                    merged_values.insert(
+                        "google_credentials_json".to_string(),
+                        serde_json::Value::String(json.clone()),
+                    );
+                }
             }
         }
     }
@@ -447,8 +418,10 @@ pub async fn run_terraform_command(
                 let output = Command::new("kill")
                     .args(["-0", &pid.to_string()])
                     .output();
-                if output.is_ok() && output.unwrap().status.success() {
-                    return Err("A deployment is already running".to_string());
+                if let Ok(out) = output {
+                    if out.status.success() {
+                        return Err("A deployment is already running".to_string());
+                    }
                 }
             }
             #[cfg(windows)]
@@ -725,6 +698,10 @@ pub fn open_folder(path: String) -> Result<(), String> {
 pub fn open_url(url: String) -> Result<(), String> {
     use std::process::Command;
 
+    if !url.starts_with("http://") && !url.starts_with("https://") {
+        return Err("Invalid URL: must start with http:// or https://".to_string());
+    }
+
     #[cfg(target_os = "macos")]
     {
         Command::new("open")
@@ -750,4 +727,251 @@ pub fn open_url(url: String) -> Result<(), String> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ── has_databricks_sp_creds ─────────────────────────────────────────
+
+    #[test]
+    fn has_sp_creds_both_present() {
+        let creds = CloudCredentials {
+            databricks_client_id: Some("client-id".to_string()),
+            databricks_client_secret: Some("client-secret".to_string()),
+            ..Default::default()
+        };
+        assert!(has_databricks_sp_creds(&creds));
+    }
+
+    #[test]
+    fn has_sp_creds_missing_id() {
+        let creds = CloudCredentials {
+            databricks_client_secret: Some("client-secret".to_string()),
+            ..Default::default()
+        };
+        assert!(!has_databricks_sp_creds(&creds));
+    }
+
+    #[test]
+    fn has_sp_creds_missing_secret() {
+        let creds = CloudCredentials {
+            databricks_client_id: Some("client-id".to_string()),
+            ..Default::default()
+        };
+        assert!(!has_databricks_sp_creds(&creds));
+    }
+
+    #[test]
+    fn has_sp_creds_empty_strings() {
+        let creds = CloudCredentials {
+            databricks_client_id: Some("".to_string()),
+            databricks_client_secret: Some("".to_string()),
+            ..Default::default()
+        };
+        assert!(!has_databricks_sp_creds(&creds));
+    }
+
+    #[test]
+    fn has_sp_creds_none() {
+        let creds = CloudCredentials::default();
+        assert!(!has_databricks_sp_creds(&creds));
+    }
+
+    // ── set_env_if_present ──────────────────────────────────────────────
+
+    #[test]
+    fn set_env_if_present_with_value() {
+        let mut env = HashMap::new();
+        set_env_if_present(&mut env, "KEY", &Some("value".to_string()));
+        assert_eq!(env.get("KEY"), Some(&"value".to_string()));
+    }
+
+    #[test]
+    fn set_env_if_present_with_none() {
+        let mut env = HashMap::new();
+        set_env_if_present(&mut env, "KEY", &None);
+        assert!(!env.contains_key("KEY"));
+    }
+
+    #[test]
+    fn set_env_if_present_with_empty_string() {
+        let mut env = HashMap::new();
+        set_env_if_present(&mut env, "KEY", &Some("".to_string()));
+        assert!(!env.contains_key("KEY"));
+    }
+
+    // ── build_env_vars ──────────────────────────────────────────────────
+
+    #[test]
+    fn build_env_vars_aws_profile() {
+        let creds = CloudCredentials {
+            aws_profile: Some("my-profile".to_string()),
+            cloud: Some("aws".to_string()),
+            ..Default::default()
+        };
+        let env = build_env_vars(&creds);
+        assert_eq!(env.get("AWS_PROFILE"), Some(&"my-profile".to_string()));
+    }
+
+    #[test]
+    fn build_env_vars_aws_keys() {
+        let creds = CloudCredentials {
+            aws_access_key_id: Some("AKID".to_string()),
+            aws_secret_access_key: Some("SECRET".to_string()),
+            aws_session_token: Some("TOKEN".to_string()),
+            aws_region: Some("us-east-1".to_string()),
+            cloud: Some("aws".to_string()),
+            ..Default::default()
+        };
+        let env = build_env_vars(&creds);
+        assert_eq!(env.get("AWS_ACCESS_KEY_ID"), Some(&"AKID".to_string()));
+        assert_eq!(env.get("AWS_SECRET_ACCESS_KEY"), Some(&"SECRET".to_string()));
+        assert_eq!(env.get("AWS_SESSION_TOKEN"), Some(&"TOKEN".to_string()));
+        assert_eq!(env.get("AWS_DEFAULT_REGION"), Some(&"us-east-1".to_string()));
+    }
+
+    #[test]
+    fn build_env_vars_azure() {
+        let creds = CloudCredentials {
+            azure_tenant_id: Some("tid".to_string()),
+            azure_subscription_id: Some("sid".to_string()),
+            azure_client_id: Some("cid".to_string()),
+            azure_client_secret: Some("csec".to_string()),
+            cloud: Some("azure".to_string()),
+            ..Default::default()
+        };
+        let env = build_env_vars(&creds);
+        assert_eq!(env.get("ARM_TENANT_ID"), Some(&"tid".to_string()));
+        assert_eq!(env.get("ARM_SUBSCRIPTION_ID"), Some(&"sid".to_string()));
+        assert_eq!(env.get("ARM_CLIENT_ID"), Some(&"cid".to_string()));
+        assert_eq!(env.get("ARM_CLIENT_SECRET"), Some(&"csec".to_string()));
+    }
+
+    #[test]
+    fn build_env_vars_gcp_project() {
+        let creds = CloudCredentials {
+            gcp_project_id: Some("my-project".to_string()),
+            cloud: Some("gcp".to_string()),
+            ..Default::default()
+        };
+        let env = build_env_vars(&creds);
+        assert_eq!(env.get("GOOGLE_PROJECT"), Some(&"my-project".to_string()));
+        assert_eq!(env.get("GCLOUD_PROJECT"), Some(&"my-project".to_string()));
+        assert_eq!(env.get("CLOUDSDK_CORE_PROJECT"), Some(&"my-project".to_string()));
+    }
+
+    #[test]
+    fn build_env_vars_gcp_credentials_json() {
+        let creds = CloudCredentials {
+            gcp_credentials_json: Some("{\"key\":\"value\"}".to_string()),
+            cloud: Some("gcp".to_string()),
+            ..Default::default()
+        };
+        let env = build_env_vars(&creds);
+        assert_eq!(env.get("GOOGLE_CREDENTIALS"), Some(&"{\"key\":\"value\"}".to_string()));
+        assert!(!env.contains_key("GOOGLE_OAUTH_ACCESS_TOKEN"));
+    }
+
+    #[test]
+    fn build_env_vars_gcp_oauth_fallback() {
+        let creds = CloudCredentials {
+            gcp_oauth_token: Some("oauth-token".to_string()),
+            cloud: Some("gcp".to_string()),
+            ..Default::default()
+        };
+        let env = build_env_vars(&creds);
+        assert_eq!(env.get("GOOGLE_OAUTH_ACCESS_TOKEN"), Some(&"oauth-token".to_string()));
+        assert!(!env.contains_key("GOOGLE_CREDENTIALS"));
+    }
+
+    #[test]
+    fn build_env_vars_gcp_nullifies_databricks_config() {
+        let creds = CloudCredentials {
+            cloud: Some("gcp".to_string()),
+            ..Default::default()
+        };
+        let env = build_env_vars(&creds);
+        assert_eq!(env.get("DATABRICKS_CONFIG_FILE"), Some(&"/dev/null".to_string()));
+    }
+
+    #[test]
+    fn build_env_vars_databricks_sp_credentials() {
+        let creds = CloudCredentials {
+            databricks_account_id: Some("acc-id".to_string()),
+            databricks_client_id: Some("sp-id".to_string()),
+            databricks_client_secret: Some("sp-secret".to_string()),
+            databricks_auth_type: Some("credentials".to_string()),
+            cloud: Some("aws".to_string()),
+            ..Default::default()
+        };
+        let env = build_env_vars(&creds);
+        assert_eq!(env.get("DATABRICKS_ACCOUNT_ID"), Some(&"acc-id".to_string()));
+        assert_eq!(env.get("DATABRICKS_CLIENT_ID"), Some(&"sp-id".to_string()));
+        assert_eq!(env.get("DATABRICKS_CLIENT_SECRET"), Some(&"sp-secret".to_string()));
+    }
+
+    #[test]
+    fn build_env_vars_databricks_profile_without_sp() {
+        let creds = CloudCredentials {
+            databricks_profile: Some("my-profile".to_string()),
+            databricks_auth_type: Some("profile".to_string()),
+            cloud: Some("aws".to_string()),
+            ..Default::default()
+        };
+        let env = build_env_vars(&creds);
+        assert_eq!(env.get("DATABRICKS_CONFIG_PROFILE"), Some(&"my-profile".to_string()));
+        assert!(!env.contains_key("DATABRICKS_CLIENT_ID"));
+    }
+
+    #[test]
+    fn build_env_vars_databricks_profile_with_sp_uses_sp() {
+        let creds = CloudCredentials {
+            databricks_profile: Some("my-profile".to_string()),
+            databricks_client_id: Some("sp-id".to_string()),
+            databricks_client_secret: Some("sp-secret".to_string()),
+            databricks_auth_type: Some("profile".to_string()),
+            cloud: Some("aws".to_string()),
+            ..Default::default()
+        };
+        let env = build_env_vars(&creds);
+        assert_eq!(env.get("DATABRICKS_CLIENT_ID"), Some(&"sp-id".to_string()));
+        assert_eq!(env.get("DATABRICKS_CLIENT_SECRET"), Some(&"sp-secret".to_string()));
+        assert!(!env.contains_key("DATABRICKS_CONFIG_PROFILE"));
+    }
+
+    #[test]
+    fn build_env_vars_empty_credentials() {
+        let creds = CloudCredentials::default();
+        let env = build_env_vars(&creds);
+        assert!(!env.contains_key("AWS_PROFILE"));
+        assert!(!env.contains_key("ARM_TENANT_ID"));
+    }
+
+    #[test]
+    fn build_env_vars_empty_aws_profile_ignored() {
+        let creds = CloudCredentials {
+            aws_profile: Some("".to_string()),
+            cloud: Some("aws".to_string()),
+            ..Default::default()
+        };
+        let env = build_env_vars(&creds);
+        assert!(!env.contains_key("AWS_PROFILE"));
+    }
+
+    // ── open_url validation ─────────────────────────────────────────────
+
+    #[test]
+    fn open_url_rejects_non_http() {
+        let result = open_url("ftp://example.com".to_string());
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Invalid URL"));
+    }
+
+    #[test]
+    fn open_url_rejects_javascript() {
+        let result = open_url("javascript:alert(1)".to_string());
+        assert!(result.is_err());
+    }
 }

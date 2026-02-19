@@ -189,6 +189,45 @@ pub(crate) fn sanitize_deployment_name(name: &str) -> Result<String, String> {
     Ok(sanitized)
 }
 
+/// Mask sensitive identifiers for debug logging (show first 4 and last 4 chars).
+pub(crate) fn mask_sensitive_id(id: &str) -> String {
+    if id.len() <= 12 {
+        return "***".to_string();
+    }
+    format!("{}...{}", &id[..4], &id[id.len()-4..])
+}
+
+/// Databricks account-level API hostname for the given cloud provider.
+pub(crate) fn databricks_accounts_host(cloud: &str) -> &'static str {
+    match cloud {
+        "azure" => "accounts.azuredatabricks.net",
+        "gcp" => "accounts.gcp.databricks.com",
+        _ => "accounts.cloud.databricks.com",
+    }
+}
+
+/// Check if a string is a valid UUID v4 format (xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx).
+pub(crate) fn is_valid_uuid(s: &str) -> bool {
+    s.len() == 36
+        && s.chars().enumerate().all(|(i, c)| match i {
+            8 | 13 | 18 | 23 => c == '-',
+            _ => c.is_ascii_hexdigit(),
+        })
+}
+
+/// Create a standard HTTP client with a 30-second timeout.
+pub(crate) fn http_client() -> Result<reqwest::Client, String> {
+    reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(30))
+        .build()
+        .map_err(|e| format!("Failed to create HTTP client: {}", e))
+}
+
+/// Check if an `Option<String>` contains a non-empty value.
+pub(crate) fn opt_non_empty(opt: &Option<String>) -> bool {
+    opt.as_ref().map(|s| !s.is_empty()).unwrap_or(false)
+}
+
 /// Sanitize template ID to prevent path traversal attacks.
 pub(crate) fn sanitize_template_id(id: &str) -> Result<String, String> {
     if id.is_empty() {
@@ -201,4 +240,265 @@ pub(crate) fn sanitize_template_id(id: &str) -> Result<String, String> {
         return Err("Template ID contains invalid characters".to_string());
     }
     Ok(id.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ── sanitize_deployment_name ─────────────────────────────────────────
+
+    #[test]
+    fn sanitize_deployment_name_valid() {
+        assert_eq!(sanitize_deployment_name("deploy-azure-123").unwrap(), "deploy-azure-123");
+    }
+
+    #[test]
+    fn sanitize_deployment_name_with_underscores() {
+        assert_eq!(sanitize_deployment_name("my_deploy_01").unwrap(), "my_deploy_01");
+    }
+
+    #[test]
+    fn sanitize_deployment_name_strips_special_chars() {
+        assert_eq!(sanitize_deployment_name("deploy/../hack").unwrap(), "deployhack");
+    }
+
+    #[test]
+    fn sanitize_deployment_name_strips_spaces() {
+        assert_eq!(sanitize_deployment_name("deploy name").unwrap(), "deployname");
+    }
+
+    #[test]
+    fn sanitize_deployment_name_empty() {
+        assert!(sanitize_deployment_name("").is_err());
+    }
+
+    #[test]
+    fn sanitize_deployment_name_all_invalid_chars() {
+        assert!(sanitize_deployment_name("///...").is_err());
+    }
+
+    #[test]
+    fn sanitize_deployment_name_leading_hyphen() {
+        assert!(sanitize_deployment_name("-badname").is_err());
+    }
+
+    #[test]
+    fn sanitize_deployment_name_too_long() {
+        let long = "a".repeat(201);
+        assert!(sanitize_deployment_name(&long).is_err());
+    }
+
+    #[test]
+    fn sanitize_deployment_name_max_length_ok() {
+        let exact = "a".repeat(200);
+        assert!(sanitize_deployment_name(&exact).is_ok());
+    }
+
+    // ── sanitize_template_id ────────────────────────────────────────────
+
+    #[test]
+    fn sanitize_template_id_valid() {
+        assert_eq!(sanitize_template_id("azure-simple").unwrap(), "azure-simple");
+    }
+
+    #[test]
+    fn sanitize_template_id_with_underscores() {
+        assert_eq!(sanitize_template_id("gcp_advanced").unwrap(), "gcp_advanced");
+    }
+
+    #[test]
+    fn sanitize_template_id_empty() {
+        assert!(sanitize_template_id("").is_err());
+    }
+
+    #[test]
+    fn sanitize_template_id_path_traversal_dots() {
+        assert!(sanitize_template_id("../etc/passwd").is_err());
+    }
+
+    #[test]
+    fn sanitize_template_id_forward_slash() {
+        assert!(sanitize_template_id("templates/hack").is_err());
+    }
+
+    #[test]
+    fn sanitize_template_id_backslash() {
+        assert!(sanitize_template_id("templates\\hack").is_err());
+    }
+
+    #[test]
+    fn sanitize_template_id_special_chars() {
+        assert!(sanitize_template_id("template@v2").is_err());
+    }
+
+    // ── is_valid_uuid ───────────────────────────────────────────────────
+
+    #[test]
+    fn is_valid_uuid_valid() {
+        assert!(is_valid_uuid("550e8400-e29b-41d4-a716-446655440000"));
+    }
+
+    #[test]
+    fn is_valid_uuid_wrong_length() {
+        assert!(!is_valid_uuid("550e8400-e29b-41d4"));
+    }
+
+    #[test]
+    fn is_valid_uuid_no_dashes() {
+        assert!(!is_valid_uuid("550e8400e29b41d4a716446655440000"));
+    }
+
+    #[test]
+    fn is_valid_uuid_wrong_dash_positions() {
+        assert!(!is_valid_uuid("550e840-0e29b-41d4-a716-446655440000"));
+    }
+
+    #[test]
+    fn is_valid_uuid_non_hex_chars() {
+        assert!(!is_valid_uuid("550e8400-e29b-41d4-a716-44665544000g"));
+    }
+
+    #[test]
+    fn is_valid_uuid_empty() {
+        assert!(!is_valid_uuid(""));
+    }
+
+    #[test]
+    fn is_valid_uuid_uppercase_hex() {
+        assert!(is_valid_uuid("550E8400-E29B-41D4-A716-446655440000"));
+    }
+
+    // ── mask_sensitive_id ───────────────────────────────────────────────
+
+    #[test]
+    fn mask_sensitive_id_normal() {
+        assert_eq!(mask_sensitive_id("1234567890abcdef"), "1234...cdef");
+    }
+
+    #[test]
+    fn mask_sensitive_id_short() {
+        assert_eq!(mask_sensitive_id("short"), "***");
+    }
+
+    #[test]
+    fn mask_sensitive_id_exactly_12() {
+        assert_eq!(mask_sensitive_id("123456789012"), "***");
+    }
+
+    #[test]
+    fn mask_sensitive_id_13_chars() {
+        assert_eq!(mask_sensitive_id("1234567890123"), "1234...0123");
+    }
+
+    // ── databricks_accounts_host ────────────────────────────────────────
+
+    #[test]
+    fn databricks_host_azure() {
+        assert_eq!(databricks_accounts_host("azure"), "accounts.azuredatabricks.net");
+    }
+
+    #[test]
+    fn databricks_host_gcp() {
+        assert_eq!(databricks_accounts_host("gcp"), "accounts.gcp.databricks.com");
+    }
+
+    #[test]
+    fn databricks_host_aws() {
+        assert_eq!(databricks_accounts_host("aws"), "accounts.cloud.databricks.com");
+    }
+
+    #[test]
+    fn databricks_host_unknown_defaults_to_aws() {
+        assert_eq!(databricks_accounts_host("unknown"), "accounts.cloud.databricks.com");
+    }
+
+    // ── opt_non_empty ───────────────────────────────────────────────────
+
+    #[test]
+    fn opt_non_empty_none() {
+        assert!(!opt_non_empty(&None));
+    }
+
+    #[test]
+    fn opt_non_empty_empty_string() {
+        assert!(!opt_non_empty(&Some("".to_string())));
+    }
+
+    #[test]
+    fn opt_non_empty_with_value() {
+        assert!(opt_non_empty(&Some("value".to_string())));
+    }
+
+    // ── copy_dir_all (filesystem integration) ───────────────────────────
+
+    #[test]
+    fn copy_dir_all_flat_files() {
+        let src = tempfile::tempdir().unwrap();
+        let dst = tempfile::tempdir().unwrap();
+        let dst_target = dst.path().join("output");
+
+        fs::write(src.path().join("file1.txt"), "hello").unwrap();
+        fs::write(src.path().join("file2.tf"), "variable {}").unwrap();
+
+        copy_dir_all(&src.path().to_path_buf(), &dst_target).unwrap();
+
+        assert_eq!(fs::read_to_string(dst_target.join("file1.txt")).unwrap(), "hello");
+        assert_eq!(fs::read_to_string(dst_target.join("file2.tf")).unwrap(), "variable {}");
+    }
+
+    #[test]
+    fn copy_dir_all_nested_directories() {
+        let src = tempfile::tempdir().unwrap();
+        let dst = tempfile::tempdir().unwrap();
+        let dst_target = dst.path().join("output");
+
+        fs::create_dir_all(src.path().join("subdir")).unwrap();
+        fs::write(src.path().join("root.txt"), "root").unwrap();
+        fs::write(src.path().join("subdir").join("nested.txt"), "nested").unwrap();
+
+        copy_dir_all(&src.path().to_path_buf(), &dst_target).unwrap();
+
+        assert_eq!(fs::read_to_string(dst_target.join("root.txt")).unwrap(), "root");
+        assert_eq!(
+            fs::read_to_string(dst_target.join("subdir").join("nested.txt")).unwrap(),
+            "nested"
+        );
+    }
+
+    #[test]
+    fn copy_dir_all_empty_directory() {
+        let src = tempfile::tempdir().unwrap();
+        let dst = tempfile::tempdir().unwrap();
+        let dst_target = dst.path().join("output");
+
+        copy_dir_all(&src.path().to_path_buf(), &dst_target).unwrap();
+
+        assert!(dst_target.exists());
+        assert!(fs::read_dir(&dst_target).unwrap().next().is_none());
+    }
+
+    #[test]
+    fn copy_dir_all_preserves_content() {
+        let src = tempfile::tempdir().unwrap();
+        let dst = tempfile::tempdir().unwrap();
+        let dst_target = dst.path().join("output");
+
+        let content = "variable \"region\" {\n  type = string\n  default = \"us-east-1\"\n}\n";
+        fs::write(src.path().join("variables.tf"), content).unwrap();
+
+        copy_dir_all(&src.path().to_path_buf(), &dst_target).unwrap();
+
+        assert_eq!(fs::read_to_string(dst_target.join("variables.tf")).unwrap(), content);
+    }
+
+    #[test]
+    fn copy_dir_all_source_not_found() {
+        let dst = tempfile::tempdir().unwrap();
+        let result = copy_dir_all(
+            &PathBuf::from("/nonexistent/path"),
+            &dst.path().join("output"),
+        );
+        assert!(result.is_err());
+    }
 }

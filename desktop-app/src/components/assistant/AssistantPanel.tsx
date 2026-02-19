@@ -22,6 +22,7 @@ export const AssistantPanel: React.FC = () => {
   } = useAssistantContext();
 
   const { screen } = useWizard();
+  const sampleQuestions = ASSISTANT_SAMPLE_QUESTIONS[screen] || [];
   const [input, setInput] = useState("");
   const [showSettings, setShowSettings] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -125,20 +126,20 @@ export const AssistantPanel: React.FC = () => {
                 {messages.length === 0 && (
                   <div className="assistant-empty">
                     <p>Ask me anything about this step, Databricks, or your deployment.</p>
-                    {ASSISTANT_SAMPLE_QUESTIONS[screen] && (
-                      <div className="assistant-sample-questions">
-                        {ASSISTANT_SAMPLE_QUESTIONS[screen].map((question, i) => (
-                          <button
-                            key={i}
-                            className="assistant-sample-question"
-                            onClick={() => sendMessage(question)}
-                            disabled={loading}
-                          >
-                            {question}
-                          </button>
-                        ))}
-                      </div>
-                    )}
+                  </div>
+                )}
+                {sampleQuestions.length > 0 && (
+                  <div className="assistant-sample-questions">
+                    {sampleQuestions.map((question, i) => (
+                      <button
+                        key={`${screen}-${i}`}
+                        className="assistant-sample-question"
+                        onClick={() => sendMessage(question)}
+                        disabled={loading}
+                      >
+                        {question}
+                      </button>
+                    ))}
                   </div>
                 )}
                 {messages.map((msg, i) => (

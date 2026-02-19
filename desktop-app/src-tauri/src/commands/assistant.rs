@@ -36,6 +36,12 @@ impl Default for LlmProvider {
     }
 }
 
+/// Parse a provider string (e.g. "github-models") into an `LlmProvider` enum.
+fn parse_provider(provider: &str) -> Result<LlmProvider, String> {
+    serde_json::from_str(&format!("\"{}\"", provider))
+        .map_err(|_| format!("Unknown provider: {}", provider))
+}
+
 // ─── Types ──────────────────────────────────────────────────────────────────
 
 /// Chat message exchanged between user and assistant.
@@ -323,7 +329,7 @@ async fn validate_api_key(
                 let body = response.text().await.unwrap_or_default();
                 
                 if status.as_u16() == 429 {
-                    return Err("Rate limit exceeded. Please wait a moment and try again.".to_string());
+                    return Err("Rate limit reached. Please wait a moment and try again.".to_string());
                 }
                 
                 if status.as_u16() == 403 || status.as_u16() == 401 {
@@ -353,11 +359,10 @@ async fn validate_api_key(
                 let body = response.text().await.unwrap_or_default();
                 
                 if status.as_u16() == 429 {
-                    // Try to parse OpenAI's detailed error message
                     if let Ok(error_response) = serde_json::from_str::<OpenAIError>(&body) {
                         return Err(error_response.error.message);
                     }
-                    return Err("Rate limit or quota exceeded. Please check your OpenAI account.".to_string());
+                    return Err("Rate limit reached. Please wait a moment and try again.".to_string());
                 }
                 
                 return Err(format!("Invalid OpenAI API key ({}): {}", status, body));
@@ -384,7 +389,7 @@ async fn validate_api_key(
                 let body = response.text().await.unwrap_or_default();
                 
                 if status.as_u16() == 429 {
-                    return Err("Rate limit exceeded. Please wait a moment and try again.".to_string());
+                    return Err("Rate limit reached. Please wait a moment and try again.".to_string());
                 }
                 
                 return Err(format!("Invalid Claude API key ({}): {}", status, body));
@@ -536,7 +541,7 @@ async fn call_claude(
             return Err("Rate limit reached. Please wait a moment and try again.".to_string());
         }
 
-        if status.as_u16() == 401 {
+        if status.as_u16() == 401 || status.as_u16() == 403 {
             return Err("Claude API key expired or invalid. Please disconnect and reconnect.".to_string());
         }
 
@@ -568,9 +573,7 @@ pub async fn assistant_save_token(
     api_key: String,
     app: AppHandle,
 ) -> Result<(), String> {
-    // Parse provider string to enum
-    let provider_enum: LlmProvider = serde_json::from_str(&format!("\"{}\"", provider))
-        .map_err(|_| format!("Unknown provider: {}", provider))?;
+    let provider_enum = parse_provider(&provider)?;
 
     // Validate the API key by making a simple test request
     let client = http_client(15)?;
@@ -708,8 +711,7 @@ pub fn assistant_switch_provider(app: AppHandle) -> Result<(), String> {
 /// Reconnect to a provider using an already-saved API key.
 #[tauri::command]
 pub fn assistant_reconnect(provider: String, app: AppHandle) -> Result<(), String> {
-    let provider_enum: LlmProvider = serde_json::from_str(&format!("\"{}\"", provider))
-        .map_err(|_| format!("Unknown provider: {}", provider))?;
+    let provider_enum = parse_provider(&provider)?;
     
     let mut settings = load_settings(&app)?;
     
@@ -732,8 +734,7 @@ pub fn assistant_reconnect(provider: String, app: AppHandle) -> Result<(), Strin
 /// Delete the API key for a specific provider.
 #[tauri::command]
 pub fn assistant_delete_provider_key(provider: String, app: AppHandle) -> Result<(), String> {
-    let provider_enum: LlmProvider = serde_json::from_str(&format!("\"{}\"", provider))
-        .map_err(|_| format!("Unknown provider: {}", provider))?;
+    let provider_enum = parse_provider(&provider)?;
     
     let mut settings = load_settings(&app)?;
     
@@ -771,7 +772,7 @@ pub async fn assistant_get_available_models(app: AppHandle) -> Result<Vec<(Strin
     // Check if cache is valid (exists and not expired)
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
+        .map_err(|_| "System clock error".to_string())?
         .as_secs();
     
     let cache_valid = settings.cached_models.is_some() 
@@ -780,7 +781,9 @@ pub async fn assistant_get_available_models(app: AppHandle) -> Result<Vec<(Strin
             .unwrap_or(false);
     
     if cache_valid {
-        return Ok(settings.cached_models.unwrap());
+        if let Some(models) = settings.cached_models {
+            return Ok(models);
+        }
     }
     
     // Fetch from API
@@ -853,4 +856,146 @@ pub fn assistant_clear_history(app: AppHandle) -> Result<(), String> {
     let mut settings = load_settings(&app)?;
     settings.chat_history = None;
     save_settings_to_disk(&app, &settings)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ── parse_provider ──────────────────────────────────────────────────
+
+    #[test]
+    fn parse_provider_github_models() {
+        let p = parse_provider("github-models").unwrap();
+        assert_eq!(p, LlmProvider::GithubModels);
+    }
+
+    #[test]
+    fn parse_provider_openai() {
+        let p = parse_provider("openai").unwrap();
+        assert_eq!(p, LlmProvider::Openai);
+    }
+
+    #[test]
+    fn parse_provider_claude() {
+        let p = parse_provider("claude").unwrap();
+        assert_eq!(p, LlmProvider::Claude);
+    }
+
+    #[test]
+    fn parse_provider_unknown() {
+        assert!(parse_provider("llama").is_err());
+    }
+
+    #[test]
+    fn parse_provider_empty() {
+        assert!(parse_provider("").is_err());
+    }
+
+    // ── is_encrypted ────────────────────────────────────────────────────
+
+    #[test]
+    fn is_encrypted_true() {
+        assert!(is_encrypted("enc:v1:somebase64data"));
+    }
+
+    #[test]
+    fn is_encrypted_false_plain_key() {
+        assert!(!is_encrypted("sk-1234567890abcdef"));
+    }
+
+    #[test]
+    fn is_encrypted_false_empty() {
+        assert!(!is_encrypted(""));
+    }
+
+    #[test]
+    fn is_encrypted_false_partial_prefix() {
+        assert!(!is_encrypted("enc:v2:data"));
+    }
+
+    // ── encrypt_key / decrypt_key round-trip ────────────────────────────
+
+    #[test]
+    fn encrypt_decrypt_roundtrip() {
+        let key = [42u8; 32];
+        let plaintext = "sk-test-api-key-1234567890";
+        let encrypted = encrypt_key(plaintext, &key).unwrap();
+        assert!(encrypted.starts_with("enc:v1:"));
+        let decrypted = decrypt_key(&encrypted, &key).unwrap();
+        assert_eq!(decrypted, plaintext);
+    }
+
+    #[test]
+    fn encrypt_produces_different_ciphertexts() {
+        let key = [7u8; 32];
+        let plaintext = "same-key";
+        let enc1 = encrypt_key(plaintext, &key).unwrap();
+        let enc2 = encrypt_key(plaintext, &key).unwrap();
+        assert_ne!(enc1, enc2, "random nonce should produce different ciphertexts");
+        assert_eq!(decrypt_key(&enc1, &key).unwrap(), plaintext);
+        assert_eq!(decrypt_key(&enc2, &key).unwrap(), plaintext);
+    }
+
+    #[test]
+    fn decrypt_wrong_key_fails() {
+        let key1 = [1u8; 32];
+        let key2 = [2u8; 32];
+        let encrypted = encrypt_key("secret", &key1).unwrap();
+        assert!(decrypt_key(&encrypted, &key2).is_err());
+    }
+
+    #[test]
+    fn decrypt_invalid_prefix_fails() {
+        let key = [0u8; 32];
+        assert!(decrypt_key("not-encrypted", &key).is_err());
+    }
+
+    #[test]
+    fn decrypt_invalid_base64_fails() {
+        let key = [0u8; 32];
+        assert!(decrypt_key("enc:v1:not-valid-base64!!!", &key).is_err());
+    }
+
+    #[test]
+    fn decrypt_too_short_fails() {
+        let key = [0u8; 32];
+        let short = format!("enc:v1:{}", base64::engine::general_purpose::STANDARD.encode(&[0u8; 5]));
+        assert!(decrypt_key(&short, &key).is_err());
+    }
+
+    // ── build_system_prompt ─────────────────────────────────────────────
+
+    #[test]
+    fn build_system_prompt_includes_knowledge_base() {
+        let prompt = build_system_prompt("welcome", "");
+        assert!(prompt.contains(KNOWLEDGE_BASE));
+    }
+
+    #[test]
+    fn build_system_prompt_includes_screen_context() {
+        let prompt = build_system_prompt("configuration", "");
+        assert!(prompt.contains("# Current Screen Context"));
+        assert!(prompt.contains("configuration"));
+    }
+
+    #[test]
+    fn build_system_prompt_includes_state_metadata() {
+        let prompt = build_system_prompt("deploy", "cloud=aws, template=aws-simple");
+        assert!(prompt.contains("# Current App State"));
+        assert!(prompt.contains("cloud=aws"));
+    }
+
+    #[test]
+    fn build_system_prompt_omits_state_section_when_empty() {
+        let prompt = build_system_prompt("welcome", "");
+        assert!(!prompt.contains("# Current App State"));
+    }
+
+    // ── LlmProvider default ─────────────────────────────────────────────
+
+    #[test]
+    fn llm_provider_default_is_github_models() {
+        assert_eq!(LlmProvider::default(), LlmProvider::GithubModels);
+    }
 }

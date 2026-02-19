@@ -13,8 +13,8 @@ Databricks Deployer helps users deploy Databricks workspaces on AWS, Azure, or G
 3. **Dependencies** - Checks Terraform CLI and Databricks CLI are installed. Click **"Install"** to auto-install Terraform. Click **"Continue →"** to proceed.
 4. **Cloud Credentials** - Authenticate with the chosen cloud provider. Use **"Verify"** to check identity, **"SSO Login"** (AWS) or **"Login"** (Azure) for authentication, **"Verify Credentials"** (GCP). Click **"Validate & Continue →"** to proceed.
 5. **Databricks Credentials** - Authenticate with Databricks account (Account ID + service principal or CLI profile). Use **"+ Add service principal as profile"** to add a new profile. Click **"Validate & Continue →"** to proceed.
-6. **Template Selection** - Choose a deployment template by clicking a template card.
-7. **Configuration** - Fill in variables: workspace name, region, networking, tags, etc. Click **"Continue →"** to proceed.
+6. **Template Selection** - Choose a Terraform deployment template by clicking a template card. Each template defines the cloud infrastructure that will be created.
+7. **Configuration** - Fill in the template's Terraform variables: workspace name, region, networking, tags, etc. These values are used to generate the Terraform input file for deployment. Click **"Continue →"** to proceed.
 8. **Unity Catalog Config** - Optionally enable Unity Catalog with catalog name and storage location. Use **"Refresh"** to re-check for existing metastore. Click **"Create Workspace →"** to proceed.
 9. **Deployment** - Runs Terraform init, plan, review, apply with real-time output. Use **"Confirm & Deploy →"** to apply, **"Cancel"** to abort, **"Go Back & Edit"** to return to configuration. After deployment: **"Open Workspace →"** on success, **"Try Again"** to retry, **"Cleanup Resources"** or **"Delete Workspace & Resources"** to rollback.
 
@@ -48,19 +48,35 @@ Databricks Deployer helps users deploy Databricks workspaces on AWS, Azure, or G
 
 # Templates
 
-## aws-simple
-Creates: VPC with subnets/NAT/security groups (or use existing VPC), S3 root bucket, cross-account IAM role, Databricks workspace, optional Unity Catalog catalog with S3 storage.
-Key variables: prefix (workspace name), region, cidr_block, tags.
-Advanced: existing_vpc_id, existing_subnet_ids, existing_security_group_id.
+Each template is a Terraform configuration. The fields on the Configuration screen map to Terraform variables — the app generates the Terraform input file from the user's entries. Credentials, cloud auth details (subscription ID, tenant ID, project ID, etc.), and Unity Catalog settings are collected in other wizard steps and automatically passed to the template — only the fields listed below appear on the Configuration screen.
 
-## azure-simple
-Creates: Resource group (new or existing), Azure Storage Account, VNet with subnets (or use existing), NSG, Databricks workspace (standard/premium/trial SKU), optional Unity Catalog catalog with Azure Storage.
-Key variables: workspace_name, location, resource_group_name, root_storage_name, workspace_sku.
-Network: create_new_vnet, vnet_name, cidr, subnet_public_cidr, subnet_private_cidr.
+All templates also require **Admin Email** — the email of the workspace admin (must already exist in the Databricks account). On Azure and GCP this is prepopulated from the authenticated cloud identity; on AWS it must be entered manually.
 
-## gcp-simple
-Creates: VPC with Databricks subnet, GCS bucket, Databricks workspace, optional Unity Catalog catalog with GCS storage.
-Key variables: databricks_workspace_name, google_region, subnet_cidr, tags.
+## AWS Standard BYOVPC
+Creates: VPC with subnets/NAT/security groups, S3 root bucket, cross-account IAM role, Databricks workspace.
+- **Workspace Name** — prefix for all resource names (default: "databricks").
+- **Region** — AWS region (default: us-east-1).
+- **VPC CIDR** — address space for the new VPC (default: 10.4.0.0/16). Subnets are allocated automatically within this range.
+- **Resource Tags** — optional key-value pairs for cost tracking.
+- Advanced: **Existing VPC ID**, **Existing Subnet IDs**, **Existing Security Group ID** — fill these to use an existing VPC instead of creating a new one. All three are required together; leave all empty for auto-creation.
+
+## Azure Standard VNet
+Creates: Resource group, Azure Storage Account, VNet with subnets, NSG, Databricks workspace.
+- **Workspace Name** — name for the Databricks workspace.
+- **Region** — Azure region (default: eastus2).
+- **Resource Group** — new or existing Azure resource group.
+- **Storage Account Name** — root storage for the workspace. Must be globally unique, 3-24 characters, lowercase letters and numbers only.
+- **Pricing Tier** — premium or trial (default: premium). Premium is required for Unity Catalog.
+- **Resource Tags** — optional key-value pairs for cost tracking.
+- Network: **Create New VNet** toggle — when enabled, a new VNet is created with the specified CIDRs. When disabled, provide **Existing VNet Name** and **VNet Resource Group**.
+- **VNet CIDR** (default: 10.0.0.0/20), **Public Subnet CIDR** (default: 10.0.0.0/22), **Private Subnet CIDR** (default: 10.0.4.0/22) — subnet CIDRs must fit within the VNet address space.
+
+## GCP Standard BYOVPC
+Creates: VPC with Databricks subnet, GCS bucket, Databricks workspace.
+- **Workspace Name** — name for the Databricks workspace.
+- **Region** — GCP region (default: us-central1).
+- **Subnet CIDR** — address range for the Databricks subnet (default: 10.0.0.0/16).
+- **Resource Tags** — optional key-value labels for GCP resources.
 
 # Unity Catalog
 Unified governance for data and AI. When enabled:

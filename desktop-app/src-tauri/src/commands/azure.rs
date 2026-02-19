@@ -1,5 +1,6 @@
 //! Azure authentication and permission checking commands.
 
+use super::{http_client, is_valid_uuid};
 use super::{CloudCredentials, CloudPermissionCheck};
 use crate::dependencies;
 use serde::{Deserialize, Serialize};
@@ -31,13 +32,7 @@ pub struct AzureResourceGroup {
 
 /// Validate Azure subscription ID format (UUID).
 fn validate_azure_subscription_id(id: &str) -> bool {
-    if id.len() != 36 {
-        return false;
-    }
-    id.chars().enumerate().all(|(i, c)| match i {
-        8 | 13 | 18 | 23 => c == '-',
-        _ => c.is_ascii_hexdigit(),
-    })
+    is_valid_uuid(id)
 }
 
 /// Get Azure CLI login status using `az account show`.
@@ -226,10 +221,7 @@ pub async fn get_azure_resource_groups_sp(
         .filter(|s| !s.is_empty())
         .ok_or("Azure Subscription ID is required")?;
 
-    let http_client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(30))
-        .build()
-        .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
+    let http_client = http_client()?;
 
     // Step 1: Get Azure AD token
     let token_url = format!(
@@ -484,4 +476,31 @@ pub async fn check_azure_permissions(
         message,
         is_warning: true,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ── validate_azure_subscription_id ──────────────────────────────────
+
+    #[test]
+    fn valid_subscription_id() {
+        assert!(validate_azure_subscription_id("550e8400-e29b-41d4-a716-446655440000"));
+    }
+
+    #[test]
+    fn invalid_subscription_id_wrong_format() {
+        assert!(!validate_azure_subscription_id("not-a-uuid"));
+    }
+
+    #[test]
+    fn invalid_subscription_id_empty() {
+        assert!(!validate_azure_subscription_id(""));
+    }
+
+    #[test]
+    fn invalid_subscription_id_no_dashes() {
+        assert!(!validate_azure_subscription_id("550e8400e29b41d4a716446655440000"));
+    }
 }

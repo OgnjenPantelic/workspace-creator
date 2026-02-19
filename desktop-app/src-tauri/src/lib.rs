@@ -3,6 +3,7 @@ mod dependencies;
 mod errors;
 mod terraform;
 
+use commands::debug_log;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -17,7 +18,7 @@ pub fn run() {
             let app_handle = app.handle().clone();
             std::thread::spawn(move || {
                 if let Err(e) = commands::setup_templates(&app_handle) {
-                    eprintln!("Failed to setup templates: {}", e);
+                    debug_log!("Failed to setup templates: {}", e);
                 }
             });
             Ok(())

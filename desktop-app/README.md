@@ -1,7 +1,5 @@
 # Databricks Deployer
 
-**Version:** 1.0.8
-
 Desktop app for deploying Databricks workspaces on AWS, Azure, and GCP using Terraform.
 
 **Download:** See [GitHub Releases](https://github.com/OgnjenPantelic/workspace-creator/releases) for the latest builds.
@@ -127,6 +125,7 @@ npm run build          # Build frontend
 npm run tauri build    # Production build
 npm run test           # Run tests (watch mode)
 npm run test:run       # Run tests once
+npm run test:coverage  # Run tests with coverage report
 ```
 
 Output: `src-tauri/target/release/bundle/` (macOS: `.dmg`, Windows: `.msi`/`.exe`)
@@ -141,15 +140,15 @@ From the `desktop-app/` directory:
 
 ```bash
 # Bump version (pick one)
-npm version patch --no-git-tag-version   # 1.0.8 → 1.0.9
-npm version minor --no-git-tag-version   # 1.0.8 → 1.1.0
-npm version major --no-git-tag-version   # 1.0.8 → 2.0.0
+npm version patch --no-git-tag-version   # 1.0.10 → 1.0.11
+npm version minor --no-git-tag-version   # 1.0.10 → 1.1.0
+npm version major --no-git-tag-version   # 1.0.10 → 2.0.0
 
 # Commit and tag from the repo root
 cd ..
 git add .
-git commit -m "v1.0.9"
-git tag v1.0.9
+git commit -m "v1.0.11"
+git tag v1.0.11
 git push --follow-tags
 ```
 
@@ -201,20 +200,29 @@ The app can create a service account with a custom IAM role and configure impers
 
 ### Running Tests
 ```bash
+# Frontend (Vitest + React Testing Library)
 npm run test           # Watch mode
 npm run test:run       # Single run
+npm run test:coverage  # Run with coverage report
+
+# Backend (Rust)
+cd src-tauri && cargo test
 ```
 
-Tests use Vitest with React Testing Library. Tauri commands are automatically mocked in `src/test/setup.ts`.
+Frontend tests use Vitest with React Testing Library. Tauri commands are automatically mocked in `src/test/setup.ts`. Backend tests use inline `#[cfg(test)]` modules covering validation, encryption, Terraform parsing, env var building, and template integration.
 
 ### Code Quality
 ```bash
 npm run build          # TypeScript compilation check
 ```
 
+### CI
+
+Pull requests targeting `main` are automatically validated by the `ci.yml` GitHub Actions workflow, which runs TypeScript compilation and the frontend test suite.
+
 ### Adding Features
 - Template changes require incrementing `TEMPLATES_VERSION` in `src-tauri/src/commands/mod.rs`
-- Variable display names go in `src/constants.ts`
+- Variable display names go in `src/constants/templates.ts`
 - See `.cursor/rules/` for project conventions
 
 ## Templates
@@ -233,9 +241,9 @@ Each template creates Unity Catalog metastore/catalog, workspace, networking, an
 
 1. Create `src-tauri/templates/{cloud}-{name}/` with Terraform files (`variables.tf` required)
 2. Register in `src-tauri/src/commands/templates.rs` -> `get_templates()`
-3. Add variable display names to `VARIABLE_DISPLAY_NAMES` in `src/constants.ts`
-4. Add variable descriptions to `VARIABLE_DESCRIPTION_OVERRIDES` in `src/constants.ts`
-5. Add credential/internal variables to `EXCLUDE_VARIABLES` or `INTERNAL_VARIABLES`
+3. Add variable display names to `VARIABLE_DISPLAY_NAMES` in `src/constants/templates.ts`
+4. Add variable descriptions to `VARIABLE_DESCRIPTION_OVERRIDES` in `src/constants/templates.ts`
+5. Add credential/internal variables to `EXCLUDE_VARIABLES` (in `src/constants/templates.ts`) or `INTERNAL_VARIABLES`
 6. Add section mappings in `groupVariablesBySection()` in `src/utils/variables.ts`
 7. Increment `TEMPLATES_VERSION` in `src-tauri/src/commands/mod.rs`
 8. Rebuild
@@ -246,9 +254,19 @@ Each template creates Unity Catalog metastore/catalog, workspace, networking, an
 src/
   App.tsx                # Main application entry
   main.tsx               # Vite entry point
-  constants.ts           # Configuration constants, regions, variable overrides
-  types.ts               # TypeScript types and interfaces
   styles.css             # Global styles
+  constants/
+    cloud.ts             # Cloud providers, region lists, display names
+    ui.ts                # Polling intervals, UI timing, default values
+    templates.ts         # Variable display names, descriptions, exclusions
+    assistant.ts         # AI assistant providers, screen context, sample questions
+    index.ts             # Barrel re-export
+  types/
+    cloud.ts             # Cloud credential and auth types (AWS, Azure, GCP)
+    databricks.ts        # Databricks profiles, Unity Catalog types
+    wizard.ts            # Wizard flow types (templates, deployment, screens)
+    assistant.ts         # AI assistant types (chat, settings, models)
+    index.ts             # Barrel re-export
   context/
     WizardContext.tsx    # Wizard state management and shared context
     AssistantContext.tsx # AI assistant state with wizard integration
@@ -268,9 +286,8 @@ src/
     databricksValidation.ts # Databricks credential validation
   components/
     WizardRouter.tsx     # Main wizard routing logic
-    common/
-      ErrorBoundary.tsx  # React error boundary
     ui/
+      ErrorBoundary.tsx  # React error boundary
       Alert.tsx          # Alert and StatusMessage components
       AuthModeSelector.tsx    # Radio-button auth mode selector
       AzureAdminDialog.tsx    # Azure admin consent flow dialog
@@ -305,7 +322,7 @@ src-tauri/
     lib.rs               # Tauri app setup, plugin registration, template extraction
     main.rs              # Application entry point
     commands/
-      mod.rs             # Command exports and template version
+      mod.rs             # Shared types, helpers, constants, and template version
       aws.rs             # AWS-specific commands
       azure.rs           # Azure-specific commands
       gcp.rs             # GCP-specific commands and SA creation
@@ -315,7 +332,7 @@ src-tauri/
       assistant.rs       # AI assistant API integration (GitHub/OpenAI/Claude)
     terraform.rs         # Terraform execution (init, plan, apply, destroy)
     dependencies.rs      # CLI detection, version checks, Terraform auto-install
-    errors.rs            # Error helpers
+    errors.rs            # Standardized error message helpers
   resources/
     assistant-knowledge.md   # Embedded knowledge base for AI assistant
   templates/

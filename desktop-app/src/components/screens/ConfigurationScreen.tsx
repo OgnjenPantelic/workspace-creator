@@ -259,7 +259,6 @@ export function ConfigurationScreen() {
                       value={formValues[variable.name] || variable.default || "premium"}
                       onChange={(e) => handleFormChange(variable.name, e.target.value)}
                     >
-                      <option value="standard">Standard</option>
                       <option value="premium">Premium</option>
                       <option value="trial">Trial</option>
                     </select>

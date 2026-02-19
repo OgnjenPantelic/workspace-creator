@@ -38,5 +38,8 @@ credentials.json
 npm-debug.log*
 crash-*.log
 
+# Test coverage
+coverage/
+
 # Tauri dev artifacts
 src-tauri/WixTools/

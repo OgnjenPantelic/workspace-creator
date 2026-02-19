@@ -1,6 +1,7 @@
 //! GCP authentication, permission checking, and service account management commands.
 
 use super::debug_log;
+use super::{http_client, is_valid_uuid, mask_sensitive_id};
 use super::{CloudCredentials, CloudPermissionCheck};
 use crate::dependencies;
 use serde::{Deserialize, Serialize};
@@ -100,7 +101,7 @@ async fn generate_gcp_token_from_json_key(sa_json: &str) -> Result<String, Strin
 
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
+        .map_err(|_| "System clock error".to_string())?
         .as_secs();
 
     #[derive(Serialize)]
@@ -127,7 +128,7 @@ async fn generate_gcp_token_from_json_key(sa_json: &str) -> Result<String, Strin
     let assertion = encode(&header, &claims, &encoding_key)
         .map_err(|e| format!("Failed to create JWT assertion: {}", e))?;
 
-    let client = reqwest::Client::new();
+    let client = http_client()?;
     let token_response = client
         .post("https://oauth2.googleapis.com/token")
         .form(&[
@@ -188,7 +189,7 @@ async fn get_gcp_oauth_token(
 
     // Method 3: Fall back to gcloud CLI
     let gcloud_cli = dependencies::find_gcloud_cli_path()
-        .ok_or("No OAuth token available and gcloud CLI not installed")?;
+        .ok_or("No OAuth token available and gcloud CLI not installed.")?;
 
     debug_log!("[check_gcp_permissions] Falling back to gcloud CLI for token");
 
@@ -237,7 +238,7 @@ pub async fn validate_gcp_credentials(
     credentials: CloudCredentials,
 ) -> Result<GcpValidation, String> {
     let gcloud_cli = dependencies::find_gcloud_cli_path()
-        .ok_or("Google Cloud CLI not found. Please install it first.")?;
+        .ok_or_else(|| crate::errors::cli_not_found("Google Cloud CLI"))?;
 
     let use_adc = credentials.gcp_use_adc.unwrap_or(true);
 
@@ -431,11 +432,8 @@ pub async fn validate_gcp_credentials(
             }
         }
 
-        let message = if impersonated_account.is_some() {
-            format!(
-                "Authenticated with service account impersonation: {}",
-                impersonated_account.as_ref().unwrap()
-            )
+        let message = if let Some(ref sa) = impersonated_account {
+            format!("Authenticated with service account impersonation: {}", sa)
         } else {
             "GCP credentials validated successfully.".to_string()
         };
@@ -511,17 +509,7 @@ pub async fn validate_gcp_databricks_access(
         return Err("Databricks Account ID is required".to_string());
     }
 
-    let account_lower = account_id.to_lowercase();
-    let is_valid_uuid = account_lower.len() == 36
-        && account_lower.chars().enumerate().all(|(i, c)| {
-            if i == 8 || i == 13 || i == 18 || i == 23 {
-                c == '-'
-            } else {
-                c.is_ascii_hexdigit()
-            }
-        });
-
-    if !is_valid_uuid {
+    if !is_valid_uuid(&account_id.to_lowercase()) {
         return Err(format!(
             "Invalid Account ID format: '{}'\n\nExpected format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx\n\nFind your Account ID at accounts.gcp.databricks.com (click your profile icon).",
             account_id
@@ -546,10 +534,10 @@ pub async fn validate_gcp_databricks_access(
     if let Some(ref email) = sa_email {
         debug_log!(
             "[validate_gcp_databricks_access] Validating access for SA: {}",
-            email
+            mask_sensitive_id(email)
         );
 
-        let client = reqwest::Client::new();
+        let client = http_client()?;
         let generate_token_url = format!(
             "https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/{}:generateIdToken",
             email
@@ -650,17 +638,7 @@ pub async fn validate_gcp_databricks_access_with_key(
         return Err("Databricks Account ID is required".to_string());
     }
 
-    let account_lower = account_id.to_lowercase();
-    let is_valid_uuid = account_lower.len() == 36
-        && account_lower.chars().enumerate().all(|(i, c)| {
-            if i == 8 || i == 13 || i == 18 || i == 23 {
-                c == '-'
-            } else {
-                c.is_ascii_hexdigit()
-            }
-        });
-
-    if !is_valid_uuid {
+    if !is_valid_uuid(&account_id.to_lowercase()) {
         return Err(format!(
             "Invalid Account ID format: '{}'\n\nExpected format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx\n\nFind your Account ID at accounts.gcp.databricks.com (click your profile icon).",
             account_id
@@ -683,7 +661,7 @@ pub async fn validate_gcp_databricks_access_with_key(
         .to_string();
 
     // Generate ID token for Databricks
-    let client = reqwest::Client::new();
+    let client = http_client()?;
     let generate_token_url = format!(
         "https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/{}:generateIdToken",
         sa_email
@@ -813,7 +791,7 @@ pub async fn check_gcp_permissions(
         project_id
     );
 
-    let client = reqwest::Client::new();
+    let client = http_client()?;
     let api_response = client
         .post(&api_url)
         .bearer_auth(&token)
@@ -843,7 +821,17 @@ pub async fn check_gcp_permissions(
         }
     };
 
-    debug_log!("[check_gcp_permissions] API response: {}", json_value);
+    let has_error = json_value.get("error").is_some();
+    let granted_count = json_value
+        .get("permissions")
+        .and_then(|p| p.as_array())
+        .map(|arr| arr.len())
+        .unwrap_or(0);
+    debug_log!(
+        "[check_gcp_permissions] API response: {} permissions granted, error: {}",
+        granted_count,
+        has_error
+    );
 
     if let Some(error) = json_value.get("error") {
         let error_msg = error
@@ -921,7 +909,7 @@ pub async fn create_gcp_service_account(
     use std::process::Command;
 
     let gcloud_cli = dependencies::find_gcloud_cli_path()
-        .ok_or("Google Cloud CLI not found. Please install it first.")?;
+        .ok_or_else(|| crate::errors::cli_not_found("Google Cloud CLI"))?;
 
     if project_id.is_empty() {
         return Err("Project ID is required".to_string());
@@ -1126,7 +1114,7 @@ pub async fn create_gcp_service_account(
     if !sa_self_token_creator.status.success() {
         let stderr = String::from_utf8_lossy(&sa_self_token_creator.stderr);
         debug_log!(
-            "Warning: Could not grant SA self Token Creator role: {}",
+            "[create_gcp_service_account] Warning: Could not grant SA self Token Creator role: {}",
             stderr.trim()
         );
     }
@@ -1195,7 +1183,7 @@ pub async fn add_service_account_to_databricks(
     use std::process::Command;
 
     let accounts_host = "accounts.gcp.databricks.com";
-    let client = reqwest::Client::new();
+    let client = http_client()?;
 
     if account_id.is_empty() {
         return Err("Databricks Account ID is required".to_string());
@@ -1205,7 +1193,7 @@ pub async fn add_service_account_to_databricks(
     }
 
     let gcloud_cli = dependencies::find_gcloud_cli_path()
-        .ok_or("Google Cloud CLI not found. Please install it first.")?;
+        .ok_or_else(|| crate::errors::cli_not_found("Google Cloud CLI"))?;
 
     let user_output = Command::new(&gcloud_cli)
         .args(["config", "get-value", "account"])
