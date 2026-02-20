@@ -51,6 +51,7 @@ export function useDeployment(): UseDeploymentReturn {
   // Refs to track current state in async callbacks
   const deploymentStepRef = useRef<DeploymentStep>("ready");
   const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const waitIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const isMountedRef = useRef(true);
 
   // Reset isMountedRef on mount (needed for React StrictMode remount cycles)
@@ -102,8 +103,16 @@ export function useDeployment(): UseDeploymentReturn {
   // Polls get_deployment_status until status.running is false, then resolves with success/failure.
   // Used after init and plan to wait for backend completion before proceeding.
   
+  const clearWaitInterval = useCallback(() => {
+    if (waitIntervalRef.current) {
+      clearInterval(waitIntervalRef.current);
+      waitIntervalRef.current = null;
+    }
+  }, []);
+
   // Helper to wait for a terraform command to complete
   const waitForCommandComplete = useCallback(async (): Promise<boolean> => {
+    clearWaitInterval();
     return new Promise((resolve) => {
       const checkStatus = async () => {
         try {
@@ -124,16 +133,17 @@ export function useDeployment(): UseDeploymentReturn {
         }
       };
 
-      // Poll until complete
       const interval = setInterval(async () => {
         const result = await checkStatus();
         if (result.done) {
           clearInterval(interval);
+          waitIntervalRef.current = null;
           resolve(result.success);
         }
       }, POLLING.STATUS_INTERVAL);
+      waitIntervalRef.current = interval;
     });
-  }, []);
+  }, [clearWaitInterval]);
 
   // Refs to store credentials for startApply
   const credentialsRef = useRef<CloudCredentials>({});
@@ -348,7 +358,8 @@ export function useDeployment(): UseDeploymentReturn {
   const cleanup = useCallback(() => {
     isMountedRef.current = false;
     clearPollInterval();
-  }, [clearPollInterval]);
+    clearWaitInterval();
+  }, [clearPollInterval, clearWaitInterval]);
 
   return {
     deploymentStatus,

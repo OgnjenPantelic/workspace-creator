@@ -75,21 +75,22 @@ export function GcpCredentialsScreen() {
       } else {
         setGcpAuthError(validation.message || "Validation failed");
       }
-    } catch (e: any) {
-      setGcpAuthError(e.toString());
+    } catch (e: unknown) {
+      setGcpAuthError(String(e));
     } finally {
       setGcpLoading(false);
     }
   };
 
-  // Auto-check credentials when the screen mounts (ADC mode only)
+  // Auto-check credentials when the screen mounts in ADC mode.
+  // The ref prevents re-runs; gcpAuthMode is a dependency so switching modes resets correctly.
   const hasAutoChecked = useRef(false);
   useEffect(() => {
     if (gcpAuthMode === "adc" && !gcpValidation && !gcpLoading && !hasAutoChecked.current) {
       hasAutoChecked.current = true;
       checkGcpCredentials();
     }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [gcpAuthMode]);
 
   // Create GCP service account
   const handleCreateServiceAccount = async () => {
@@ -157,8 +158,8 @@ export function GcpCredentialsScreen() {
       }
       
       setSaCreationSuccess(`Service account created and verified: ${saEmail}`);
-    } catch (e: any) {
-      setSaCreationError(e.toString());
+    } catch (e: unknown) {
+      setSaCreationError(String(e));
       setCreatingServiceAccount(false);
     }
   };
@@ -224,8 +225,8 @@ export function GcpCredentialsScreen() {
         }
         
         setCredentials(prev => ({ ...prev, gcp_use_adc: true }));
-      } catch (e: any) {
-        setGcpAuthError(e.toString());
+      } catch (e: unknown) {
+        setGcpAuthError(String(e));
         setGcpLoading(false);
         return;
       } finally {

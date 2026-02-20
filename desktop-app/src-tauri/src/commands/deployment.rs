@@ -13,6 +13,33 @@ use tauri::AppHandle;
 
 // ─── Helpers (deployment-local) ─────────────────────────────────────────────
 
+/// Resolve a zip entry path safely, rejecting entries that escape `base_dir`.
+fn safe_zip_entry_path(base_dir: &std::path::Path, entry_name: &str) -> Result<std::path::PathBuf, String> {
+    use std::path::Component;
+
+    let entry_path = std::path::Path::new(entry_name);
+    for component in entry_path.components() {
+        match component {
+            Component::ParentDir => {
+                return Err(format!(
+                    "Zip entry contains path traversal: {}",
+                    entry_name
+                ));
+            }
+            Component::RootDir | Component::Prefix(_) => {
+                return Err(format!(
+                    "Zip entry contains absolute path: {}",
+                    entry_name
+                ));
+            }
+            _ => {}
+        }
+    }
+
+    let outpath = base_dir.join(entry_path);
+    Ok(outpath)
+}
+
 /// Set an environment variable from an optional credential value.
 fn set_env_if_present(env_vars: &mut HashMap<String, String>, key: &str, value: &Option<String>) {
     if let Some(v) = value {
@@ -205,7 +232,7 @@ pub async fn install_terraform() -> Result<String, String> {
 
     for i in 0..archive.len() {
         let mut file = archive.by_index(i).map_err(|e| e.to_string())?;
-        let outpath = install_dir.join(file.name());
+        let outpath = safe_zip_entry_path(&install_dir, file.name())?;
 
         if file.name().ends_with('/') {
             fs::create_dir_all(&outpath).map_err(|e| e.to_string())?;
@@ -662,9 +689,20 @@ pub fn get_deployments_folder(app: AppHandle) -> Result<String, String> {
 }
 
 /// Open a folder in the system file manager.
+///
+/// Validates the path is an existing directory and rejects traversal sequences.
 #[tauri::command]
 pub fn open_folder(path: String) -> Result<(), String> {
     use std::process::Command;
+
+    if path.contains("..") {
+        return Err("Path traversal is not allowed".to_string());
+    }
+
+    let p = std::path::Path::new(&path);
+    if !p.is_dir() {
+        return Err("Path is not an existing directory".to_string());
+    }
 
     #[cfg(target_os = "macos")]
     {
@@ -973,5 +1011,71 @@ mod tests {
     fn open_url_rejects_javascript() {
         let result = open_url("javascript:alert(1)".to_string());
         assert!(result.is_err());
+    }
+
+    // ── safe_zip_entry_path ─────────────────────────────────────────────
+
+    #[test]
+    fn zip_path_normal_entry() {
+        let base = std::path::PathBuf::from("/tmp/install");
+        let result = safe_zip_entry_path(&base, "terraform");
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), base.join("terraform"));
+    }
+
+    #[test]
+    fn zip_path_nested_entry() {
+        let base = std::path::PathBuf::from("/tmp/install");
+        let result = safe_zip_entry_path(&base, "bin/terraform");
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), base.join("bin/terraform"));
+    }
+
+    #[test]
+    fn zip_path_rejects_parent_traversal() {
+        let base = std::path::PathBuf::from("/tmp/install");
+        let result = safe_zip_entry_path(&base, "../etc/passwd");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("path traversal"));
+    }
+
+    #[test]
+    fn zip_path_rejects_nested_traversal() {
+        let base = std::path::PathBuf::from("/tmp/install");
+        let result = safe_zip_entry_path(&base, "foo/../../etc/passwd");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("path traversal"));
+    }
+
+    #[test]
+    fn zip_path_rejects_absolute_path() {
+        let base = std::path::PathBuf::from("/tmp/install");
+        let result = safe_zip_entry_path(&base, "/etc/passwd");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("absolute path"));
+    }
+
+    // ── open_folder validation ──────────────────────────────────────────
+
+    #[test]
+    fn open_folder_rejects_traversal() {
+        let result = open_folder("/tmp/../etc".to_string());
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("traversal"));
+    }
+
+    #[test]
+    fn open_folder_rejects_nonexistent() {
+        let result = open_folder("/nonexistent/path/that/does/not/exist".to_string());
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("not an existing directory"));
+    }
+
+    #[test]
+    fn open_folder_rejects_file_path() {
+        let temp = tempfile::NamedTempFile::new().unwrap();
+        let result = open_folder(temp.path().to_string_lossy().to_string());
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("not an existing directory"));
     }
 }
