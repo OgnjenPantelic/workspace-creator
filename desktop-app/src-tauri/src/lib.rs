@@ -64,6 +64,17 @@ pub fn run() {
             commands::validate_azure_databricks_identity,
             commands::create_gcp_service_account,
             commands::add_service_account_to_databricks,
+            // Git / GitHub integration
+            commands::git_get_status,
+            commands::git_init_repo,
+            commands::git_check_remote,
+            commands::git_push_to_remote,
+            commands::preview_tfvars_example,
+            commands::github_device_auth_start,
+            commands::github_device_auth_poll,
+            commands::github_get_auth,
+            commands::github_logout,
+            commands::github_create_repo,
             // AI Assistant
             commands::assistant_save_token,
             commands::assistant_chat,

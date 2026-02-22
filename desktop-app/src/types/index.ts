@@ -28,3 +28,13 @@ export type {
   AssistantSettings,
   ModelOption,
 } from "./assistant";
+
+export type {
+  GitRepoStatus,
+  GitOperationResult,
+  TfVarPreviewEntry,
+  DeviceCodeResponse,
+  DeviceAuthPollResult,
+  GitHubAuthStatus,
+  GitHubRepo,
+} from "./github";

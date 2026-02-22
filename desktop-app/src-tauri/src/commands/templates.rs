@@ -254,7 +254,7 @@ mod tests {
         let vars = terraform::parse_variables_tf(&content);
 
         let account_id = vars.iter().find(|v| v.name == "databricks_account_id").unwrap();
-        assert!(account_id.sensitive, "databricks_account_id should be sensitive");
+        assert!(!account_id.sensitive, "databricks_account_id is an identifier, not a secret");
 
         let client_secret = vars.iter().find(|v| v.name == "databricks_client_secret").unwrap();
         assert!(client_secret.sensitive, "databricks_client_secret should be sensitive");

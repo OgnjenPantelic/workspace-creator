@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { useWizard } from "../../hooks/useWizard";
 import type { DeploymentStep } from "../../hooks/useDeployment";
+import { GitIntegrationCard } from "../GitIntegrationCard";
 
 export function DeploymentScreen() {
   const ctx = useWizard();
@@ -310,6 +311,11 @@ export function DeploymentScreen() {
                     </div>
                   </div>
                 </div>
+              )}
+
+              {/* Git Integration */}
+              {deployment.deploymentName && (
+                <GitIntegrationCard deploymentName={deployment.deploymentName} />
               )}
 
               {/* Secondary Actions */}

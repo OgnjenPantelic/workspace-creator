@@ -6,6 +6,7 @@
 //! - [`databricks`] - Databricks authentication and Unity Catalog permissions
 //! - [`deployment`] - Terraform deployment, configuration, and lifecycle management
 //! - [`gcp`] - GCP authentication, permission checking, and service account management
+//! - [`github`] - Git repository initialization and GitHub integration
 //! - [`templates`] - Template setup, listing, and variable parsing
 
 pub mod assistant;
@@ -14,6 +15,7 @@ pub mod azure;
 pub mod databricks;
 pub mod deployment;
 pub mod gcp;
+pub mod github;
 pub mod templates;
 
 // Re-export all commands so lib.rs can reference them as commands::function_name
@@ -23,6 +25,7 @@ pub use azure::*;
 pub use databricks::*;
 pub use deployment::*;
 pub use gcp::*;
+pub use github::*;
 pub use templates::*;
 
 use serde::{Deserialize, Serialize};
@@ -120,7 +123,7 @@ pub struct UCPermissionCheck {
 // ─── Constants ──────────────────────────────────────────────────────────────
 
 /// Increment when embedded templates change to trigger a refresh.
-pub(crate) const TEMPLATES_VERSION: &str = "2.41.1";
+pub(crate) const TEMPLATES_VERSION: &str = "2.47.1";
 
 /// Variables that are automatically set by the app and hidden from the UI form.
 pub(crate) const INTERNAL_VARIABLES: &[&str] = &[

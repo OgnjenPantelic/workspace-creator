@@ -65,7 +65,6 @@ variable "tags" {
 variable "databricks_account_id" {
   description = "Databricks Account ID"
   type        = string
-  sensitive   = true
 }
 
 variable "databricks_workspace_name" {

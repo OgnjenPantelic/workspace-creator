@@ -1,0 +1,5 @@
+databricks_account_id = "<account-id>"
+admin_user            = "<admin-user-email>"
+prefix                = "<workspace-prefix>"
+region                = "us-east-1"
+cidr_block            = "10.0.0.0/16"

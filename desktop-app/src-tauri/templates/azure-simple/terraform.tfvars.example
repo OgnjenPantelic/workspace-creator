@@ -1,0 +1,9 @@
+tenant_id              = "<azure-tenant-id>"
+azure_subscription_id  = "<azure-subscription-id>"
+resource_group_name    = "<resource-group-name>"
+workspace_name         = "<workspace-name>"
+admin_user             = "<admin-user-email>"
+location               = "eastus"
+root_storage_name      = "<storage-account-name>"
+
+databricks_account_id  = "<account-id>"

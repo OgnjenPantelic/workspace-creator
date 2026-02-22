@@ -5,6 +5,27 @@ import { POLLING } from "../constants";
 
 export type DeploymentStep = "ready" | "initializing" | "planning" | "review" | "deploying" | "complete" | "failed";
 
+const WORKSPACE_NAME_KEYS = ["prefix", "workspace_name", "databricks_workspace_name"];
+
+function buildDeploymentName(template: Template, formValues: Record<string, any>): string {
+  const workspaceName = WORKSPACE_NAME_KEYS
+    .map((key) => formValues[key])
+    .find((v) => typeof v === "string" && v.trim() !== "");
+
+  const shortId = Math.random().toString(36).slice(2, 8);
+
+  if (workspaceName) {
+    const slug = workspaceName
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-|-$/g, "");
+    return slug ? `${slug}-${shortId}` : `deploy-${template.id}-${shortId}`;
+  }
+
+  return `deploy-${template.id}-${shortId}`;
+}
+
 export interface UseDeploymentReturn {
   // State
   deploymentStatus: DeploymentStatus | null;
@@ -195,7 +216,7 @@ export function useDeployment(): UseDeploymentReturn {
       }
 
       // Reuse existing deployment if available (for retry), otherwise create new
-      const targetDeploymentName = deploymentName || `deploy-${template.id}-${Date.now()}`;
+      const targetDeploymentName = deploymentName || buildDeploymentName(template, formValues);
 
       try {
         // Step 1: Save configuration (copies template, generates tfvars)

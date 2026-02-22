@@ -45,6 +45,7 @@ const GCP_DATABRICKS_PERMISSIONS: &[&str] = &[
     "compute.firewalls.create",
     "compute.firewalls.delete",
     "compute.firewalls.get",
+    "compute.firewalls.list",
     // Storage permissions
     "storage.buckets.create",
     "storage.buckets.delete",
@@ -747,6 +748,7 @@ pub async fn check_gcp_permissions(
         "compute.networks.create",
         "compute.subnetworks.create",
         "compute.firewalls.create",
+        "compute.firewalls.list",
         "storage.buckets.create",
         "iam.serviceAccounts.create",
         "iam.serviceAccounts.setIamPolicy",

@@ -36,7 +36,6 @@ variable "tags" {
 variable "databricks_account_id" {
   description = "ID of the Databricks account"
   type        = string
-  sensitive   = true
 }
 
 variable "workspace_name" {
@@ -175,7 +174,6 @@ variable "databricks_client_id" {
   description = "Databricks service principal client ID (required for oauth-m2m auth type)"
   type        = string
   default     = ""
-  sensitive   = true
 }
 
 variable "databricks_client_secret" {

@@ -243,7 +243,7 @@ describe("useDeployment", () => {
 
       expect(result.current.deploymentStep).toBe("review");
       expect(result.current.templatePath).toBe("/tmp/deployments/deploy-azure-simple-123");
-      expect(result.current.deploymentName).toContain("deploy-azure-simple-");
+      expect(result.current.deploymentName).toMatch(/^test-[a-z0-9]{6}$/);
     }, 15000);
 
     it("filters empty form values", async () => {
