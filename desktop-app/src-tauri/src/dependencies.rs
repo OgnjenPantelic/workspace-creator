@@ -143,11 +143,12 @@ pub fn check_databricks_cli() -> DependencyStatus {
     };
 
     if let Some(cli_path) = find_databricks_cli_path() {
-        status.installed = true;
         if let Ok(output) = Command::new(&cli_path).arg("--version").output() {
-            if let Ok(stdout) = String::from_utf8(output.stdout) {
-                // Version output is like "Databricks CLI v0.x.x"
-                status.version = Some(stdout.trim().to_string());
+            if output.status.success() {
+                status.installed = true;
+                if let Ok(stdout) = String::from_utf8(output.stdout) {
+                    status.version = Some(stdout.trim().to_string());
+                }
             }
         }
     }
@@ -358,12 +359,13 @@ pub fn check_git() -> DependencyStatus {
     };
 
     if let Some(git_path) = find_git_path() {
-        status.installed = true;
         if let Ok(output) = Command::new(&git_path).arg("--version").output() {
-            if let Ok(stdout) = String::from_utf8(output.stdout) {
-                // Extract version from "git version 2.x.x"
-                if let Some(version) = stdout.strip_prefix("git version ") {
-                    status.version = Some(version.trim().to_string());
+            if output.status.success() {
+                status.installed = true;
+                if let Ok(stdout) = String::from_utf8(output.stdout) {
+                    if let Some(version) = stdout.strip_prefix("git version ") {
+                        status.version = Some(version.trim().to_string());
+                    }
                 }
             }
         }
@@ -422,13 +424,14 @@ pub fn check_terraform() -> DependencyStatus {
     };
 
     if let Some(terraform_path) = find_terraform_path() {
-        status.installed = true;
         if let Ok(output) = Command::new(&terraform_path).arg("version").output() {
-            if let Ok(stdout) = String::from_utf8(output.stdout) {
-                // Extract version from "Terraform v1.x.x"
-                if let Some(line) = stdout.lines().next() {
-                    if let Some(version) = line.strip_prefix("Terraform v") {
-                        status.version = Some(version.split_whitespace().next().unwrap_or(version).to_string());
+            if output.status.success() {
+                status.installed = true;
+                if let Ok(stdout) = String::from_utf8(output.stdout) {
+                    if let Some(line) = stdout.lines().next() {
+                        if let Some(version) = line.strip_prefix("Terraform v") {
+                            status.version = Some(version.split_whitespace().next().unwrap_or(version).to_string());
+                        }
                     }
                 }
             }
@@ -474,10 +477,12 @@ pub fn check_aws_cli() -> DependencyStatus {
     };
 
     if let Some(aws_path) = find_aws_cli_path() {
-        status.installed = true;
         if let Ok(output) = Command::new(&aws_path).arg("--version").output() {
-            if let Ok(stdout) = String::from_utf8(output.stdout) {
-                status.version = Some(stdout.trim().to_string());
+            if output.status.success() {
+                status.installed = true;
+                if let Ok(stdout) = String::from_utf8(output.stdout) {
+                    status.version = Some(stdout.trim().to_string());
+                }
             }
         }
     }
@@ -521,11 +526,13 @@ pub fn check_azure_cli() -> DependencyStatus {
     };
 
     if let Some(az_path) = find_azure_cli_path() {
-        status.installed = true;
         if let Ok(output) = Command::new(&az_path).arg("--version").output() {
-            if let Ok(stdout) = String::from_utf8(output.stdout) {
-                if let Some(line) = stdout.lines().next() {
-                    status.version = Some(line.trim().to_string());
+            if output.status.success() {
+                status.installed = true;
+                if let Ok(stdout) = String::from_utf8(output.stdout) {
+                    if let Some(line) = stdout.lines().next() {
+                        status.version = Some(line.trim().to_string());
+                    }
                 }
             }
         }
@@ -575,11 +582,13 @@ pub fn check_gcloud_cli() -> DependencyStatus {
     };
 
     if let Some(gcloud_path) = find_gcloud_cli_path() {
-        status.installed = true;
         if let Ok(output) = Command::new(&gcloud_path).arg("--version").output() {
-            if let Ok(stdout) = String::from_utf8(output.stdout) {
-                if let Some(line) = stdout.lines().next() {
-                    status.version = Some(line.trim().to_string());
+            if output.status.success() {
+                status.installed = true;
+                if let Ok(stdout) = String::from_utf8(output.stdout) {
+                    if let Some(line) = stdout.lines().next() {
+                        status.version = Some(line.trim().to_string());
+                    }
                 }
             }
         }
