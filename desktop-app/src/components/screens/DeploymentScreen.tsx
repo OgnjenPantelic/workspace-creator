@@ -1,6 +1,7 @@
 import { useMemo, useState, useEffect, useRef } from "react";
 import { useWizard } from "../../hooks/useWizard";
 import type { DeploymentStep } from "../../hooks/useDeployment";
+import { GitIntegrationCard } from "../GitIntegrationCard";
 
 function ConfirmDialog({ title, message, confirmLabel, onConfirm, onCancel }: {
   title: string;
@@ -314,6 +315,11 @@ export function DeploymentScreen() {
                     </div>
                   </div>
                 </div>
+              )}
+
+              {/* Git Integration */}
+              {deployment.deploymentName && (
+                <GitIntegrationCard deploymentName={deployment.deploymentName} />
               )}
 
               <div style={{ display: "flex", gap: "12px", width: "100%", marginBottom: "20px" }}>

@@ -1,7 +1,6 @@
 variable "databricks_account_id" {
   description = "Databricks Account ID"
   type        = string
-  sensitive   = true
 }
 
 variable "admin_user" {
