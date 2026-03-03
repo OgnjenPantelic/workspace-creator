@@ -204,25 +204,25 @@ describe("initializeFormDefaults", () => {
     expect(defaults.subnet_private_cidr).toBe(DEFAULTS.PRIVATE_SUBNET_CIDR);
   });
 
-  it("sets location to DEFAULTS.AZURE_REGION", () => {
+  it("sets location to empty string to force explicit selection", () => {
     const vars = [makeVar("location")];
     const defaults = initializeFormDefaults(vars);
 
-    expect(defaults.location).toBe(DEFAULTS.AZURE_REGION);
+    expect(defaults.location).toBe("");
   });
 
-  it("sets google_region to variable default if present", () => {
+  it("sets google_region to empty string even when variable has a default", () => {
     const vars = [makeVar("google_region", { default: "europe-west1" })];
     const defaults = initializeFormDefaults(vars);
 
-    expect(defaults.google_region).toBe("europe-west1");
+    expect(defaults.google_region).toBe("");
   });
 
-  it("sets google_region to DEFAULTS.GCP_REGION when no default", () => {
+  it("sets google_region to empty string to force explicit selection", () => {
     const vars = [makeVar("google_region")];
     const defaults = initializeFormDefaults(vars);
 
-    expect(defaults.google_region).toBe(DEFAULTS.GCP_REGION);
+    expect(defaults.google_region).toBe("");
   });
 
   it("sets admin_user from context.azureUser when provided", () => {
