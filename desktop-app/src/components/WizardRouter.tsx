@@ -14,7 +14,7 @@ import {
   DatabricksCredentialsScreen,
 } from "./screens";
 
-const STEP_GROUPS = [
+const ALL_STEP_GROUPS = [
   { screens: ["welcome"], label: "Start" },
   { screens: ["cloud-selection"], label: "Cloud" },
   { screens: ["dependencies"], label: "Setup" },
@@ -25,17 +25,19 @@ const STEP_GROUPS = [
   { screens: ["deployment"], label: "Deploy" },
 ];
 
-function getGroupIndex(screen: string): number {
-  return STEP_GROUPS.findIndex(g => g.screens.includes(screen));
-}
-
 function StepIndicator({ screen }: { screen: string }) {
-  const currentIdx = getGroupIndex(screen);
+  const { selectedTemplate } = useWizard();
+  const isSra = selectedTemplate?.id?.includes("sra") ?? false;
+  const stepGroups = isSra
+    ? ALL_STEP_GROUPS.filter(g => g.label !== "Catalog")
+    : ALL_STEP_GROUPS;
+
+  const currentIdx = stepGroups.findIndex(g => g.screens.includes(screen));
   if (currentIdx <= 0) return null;
 
   return (
     <div className="wizard-steps-global">
-      {STEP_GROUPS.slice(1).map((group, i) => (
+      {stepGroups.slice(1).map((group, i) => (
         <span key={group.label} style={{ display: "flex", alignItems: "center", gap: 4 }}>
           {i > 0 && (
             <span className={`wizard-step-connector ${i < currentIdx ? "completed" : ""}`} />

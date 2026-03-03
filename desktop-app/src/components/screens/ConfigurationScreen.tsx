@@ -37,6 +37,7 @@ const COLLAPSIBLE_SECTIONS = new Set([
   "Advanced: Network Configuration",
   "Security Group Egress Ports",
   "Security & Compliance",
+  "Metastore & Catalog",
   "Optional Settings",
   "Other Configuration",
   "Tags",
@@ -51,6 +52,7 @@ export function ConfigurationScreen() {
     showAdvanced, setShowAdvanced,
     formSubmitAttempted, setFormSubmitAttempted,
     setScreen, goBack,
+    startDeploymentWizard,
     azure,
   } = useWizard();
   const azureResourceGroups = azure.resourceGroups;
@@ -63,16 +65,25 @@ export function ConfigurationScreen() {
   };
   const [showTags, _setShowTags] = useState(() => loadCollapseState("tags", false));
   const [showSecurity, _setShowSecurity] = useState(() => loadCollapseState("security", false));
+  const [showMetastore, _setShowMetastore] = useState(() => loadCollapseState("metastore", false));
   const [showOptional, _setShowOptional] = useState(() => loadCollapseState("optional", false));
   const [showOther, _setShowOther] = useState(() => loadCollapseState("other", false));
   const [showSgPorts, _setShowSgPorts] = useState(() => loadCollapseState("sgPorts", false));
   const setShowTags = (v: boolean) => { _setShowTags(v); persistCollapse("tags", v); };
   const setShowSecurity = (v: boolean) => { _setShowSecurity(v); persistCollapse("security", v); };
+  const setShowMetastore = (v: boolean) => { _setShowMetastore(v); persistCollapse("metastore", v); };
   const setShowOptional = (v: boolean) => { _setShowOptional(v); persistCollapse("optional", v); };
   const setShowOther = (v: boolean) => { _setShowOther(v); persistCollapse("other", v); };
   const setShowSgPorts = (v: boolean) => { _setShowSgPorts(v); persistCollapse("sgPorts", v); };
   const createNewVpc = formValues["create_new_vpc"] !== false && formValues["create_new_vpc"] !== "false";
-  const onContinue = () => setScreen("unity-catalog-config");
+  const isSraTemplate = selectedTemplate?.id?.includes("sra") ?? false;
+  const onContinue = () => {
+    if (isSraTemplate) {
+      startDeploymentWizard();
+    } else {
+      setScreen("unity-catalog-config");
+    }
+  };
   const onBack = goBack;
   
   const handleFormChange = (name: string, value: any) => {
@@ -253,6 +264,14 @@ export function ConfigurationScreen() {
     conditionallyRequired.add("subnet_cidr");
   }
 
+  // --- Metastore ID required when metastore_exists is true (all SRA templates) ---
+  if (isAwsSra || isAzureSra || isGcpSra) {
+    const metastoreExists = formValues["metastore_exists"] === true || formValues["metastore_exists"] === "true";
+    if (metastoreExists) {
+      conditionallyRequired.add("existing_metastore_id");
+    }
+  }
+
   // --- AWS SRA conditionally required ---
   if (isAwsSra) {
     const networkMode = (formValues["network_configuration"] as string) || "isolated";
@@ -412,7 +431,7 @@ export function ConfigurationScreen() {
   const sectionErrorCounts = useMemo(() => {
     if (!formSubmitAttempted) return {};
     const counts: Record<string, number> = {};
-    const secs = groupVariablesBySection(variables);
+    const secs = groupVariablesBySection(variables, selectedTemplate?.id);
     for (const [secName, secVars] of Object.entries(secs)) {
       let count = 0;
       for (const v of secVars) {
@@ -446,7 +465,7 @@ export function ConfigurationScreen() {
     );
   }
 
-  const sections = groupVariablesBySection(variables);
+  const sections = groupVariablesBySection(variables, selectedTemplate?.id);
 
   const isBoolField = (v: TerraformVariable) =>
     v.var_type.includes("bool") || KNOWN_BOOLEANS.has(v.name);
@@ -455,6 +474,7 @@ export function ConfigurationScreen() {
     "Advanced: Network Configuration": [showAdvanced, setShowAdvanced],
     "Security Group Egress Ports": [showSgPorts, setShowSgPorts],
     "Security & Compliance": [showSecurity, setShowSecurity],
+    "Metastore & Catalog": [showMetastore, setShowMetastore],
     "Optional Settings": [showOptional, setShowOptional],
     "Other Configuration": [showOther, setShowOther],
     "Tags": [showTags, setShowTags],
@@ -464,6 +484,7 @@ export function ConfigurationScreen() {
     "Advanced: Network Configuration": "Network settings have sensible defaults. Modify only if you have specific requirements.",
     "Security Group Egress Ports": "Pre-filled with Databricks-required ports. Rarely needs changes.",
     "Security & Compliance": "Security profiles, encryption, and compliance settings.",
+    "Metastore & Catalog": "Configure Unity Catalog metastore and workspace catalog.",
     "Optional Settings": "These settings have sensible defaults. Expand to customize.",
     "Other Configuration": "Additional configuration options.",
     "Tags": "Optional key-value pairs to tag all created resources for cost tracking and organization.",
@@ -1136,7 +1157,7 @@ export function ConfigurationScreen() {
                 Preparing...
               </>
             ) : (
-              "Continue →"
+              isSraTemplate ? "Create Workspace →" : "Continue →"
             )}
           </button>
           {formSubmitAttempted && !formValidation.isValid && (

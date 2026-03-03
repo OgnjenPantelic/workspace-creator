@@ -9,7 +9,7 @@ function isValidJson(s: string): boolean {
 /**
  * Canonical section order for the configuration form.
  */
-export const SECTION_ORDER = ["Workspace", "Advanced: Network Configuration", "Security Group Egress Ports", "Security & Compliance", "Optional Settings", "Tags"];
+export const SECTION_ORDER = ["Workspace", "Advanced: Network Configuration", "Security Group Egress Ports", "Security & Compliance", "Metastore & Catalog", "Optional Settings", "Tags"];
 
 /**
  * Field display order within each section (lower number = displayed first).
@@ -79,6 +79,9 @@ const FIELD_ORDER: Record<string, number> = {
   workspace_pe_ip_name: 7,
   relay_service_attachment: 8,
   workspace_service_attachment: 9,
+  // Unity Catalog (SRA)
+  existing_metastore_id: 1,
+  uc_catalog_name: 2,
   // Security
   enable_compliance_security_profile: 1,
   compliance_standards: 2,
@@ -102,8 +105,11 @@ const FIELD_ORDER: Record<string, number> = {
  * Returns sections in canonical order with fields sorted within each section.
  */
 export function groupVariablesBySection(
-  variables: TerraformVariable[]
+  variables: TerraformVariable[],
+  templateId?: string
 ): Record<string, TerraformVariable[]> {
+  const isSra = templateId?.includes("sra");
+  const SRA_UC_FIELDS = ["existing_metastore_id", "uc_catalog_name"];
   const sectionMap: Record<string, string> = {
     // Workspace
     prefix: "Workspace",
@@ -195,9 +201,13 @@ export function groupVariablesBySection(
     cmek_resource_id: "Security & Compliance",
     workspace_security_compliance: "Security & Compliance",
 
+    // Metastore & Catalog
+    metastore_exists: "Metastore & Catalog",
+    existing_metastore_id: "Metastore & Catalog",
+    uc_catalog_name: "Metastore & Catalog",
+
     // Optional Settings
     existing_ncc_name: "Advanced: Network Configuration",
-    metastore_exists: "Optional Settings",
     audit_log_delivery_exists: "Optional Settings",
     deployment_name: "Optional Settings",
     ip_addresses: "Optional Settings",
@@ -209,7 +219,8 @@ export function groupVariablesBySection(
   // Build temporary map
   const tempSections: Record<string, TerraformVariable[]> = {};
   variables.forEach((v) => {
-    if ((EXCLUDE_VARIABLES as readonly string[]).includes(v.name)) return;
+    const isExcluded = (EXCLUDE_VARIABLES as readonly string[]).includes(v.name);
+    if (isExcluded && !(isSra && SRA_UC_FIELDS.includes(v.name))) return;
     const section = sectionMap[v.name] || "Other Configuration";
     if (!tempSections[section]) tempSections[section] = [];
     tempSections[section].push(v);

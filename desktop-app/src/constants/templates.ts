@@ -146,7 +146,8 @@ export const VARIABLE_DESCRIPTION_OVERRIDES: Record<string, string> = {
   existing_subnet_ids: "Use existing subnets. Required if using an existing VPC.",
   existing_security_group_id: "Use an existing security group. Required if using an existing VPC.",
   metastore_id: "Use an existing Unity Catalog metastore. Leave empty to auto-detect or create a new one.",
-  existing_metastore_id: "Use an existing Unity Catalog metastore. Leave empty to auto-detect or create a new one.",
+  existing_metastore_id: "Required. The ID of your existing Unity Catalog metastore in this region.",
+  uc_catalog_name: "Custom name for the workspace catalog and S3 bucket. Leave empty to auto-generate from resource prefix.",
 
   // --- SRA: Azure ---
   resource_suffix: "Suffix appended to all resource names (e.g. dbx-dev, sra).",
@@ -432,6 +433,13 @@ export const CONDITIONAL_FIELD_VISIBILITY: {
     toggle: "enable_compliance_security_profile",
     defaultChecked: false,
     showWhenChecked: ["compliance_standards"],
+    showWhenUnchecked: [],
+  },
+  // AWS SRA: metastore_exists controls existing_metastore_id visibility
+  {
+    toggle: "metastore_exists",
+    defaultChecked: false,
+    showWhenChecked: ["existing_metastore_id"],
     showWhenUnchecked: [],
   },
   // GCP SRA: use existing CMEK vs create new

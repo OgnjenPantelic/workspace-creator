@@ -147,6 +147,18 @@ variable "metastore_exists" {
   type        = bool
 }
 
+variable "existing_metastore_id" {
+  description = "ID of an existing Unity Catalog metastore. When provided, skips metastore lookup by region."
+  type        = string
+  default     = ""
+}
+
+variable "uc_catalog_name" {
+  description = "Name for the Unity Catalog workspace catalog and its S3 bucket. Leave empty to auto-generate from resource_prefix."
+  type        = string
+  default     = ""
+}
+
 variable "network_configuration" {
   description = "The type of network set-up for the workspace network configuration."
   type        = string

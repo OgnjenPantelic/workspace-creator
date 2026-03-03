@@ -9,8 +9,9 @@ module "unity_catalog_metastore_creation" {
     databricks = databricks.mws
   }
 
-  region           = var.region
-  metastore_exists = var.metastore_exists
+  region                = var.region
+  metastore_exists      = var.metastore_exists
+  existing_metastore_id = var.existing_metastore_id
 }
 
 # Create Network Connectivity Connection Object
@@ -130,7 +131,7 @@ module "unity_catalog_catalog_creation" {
   aws_assume_partition         = local.assume_role_partition
   unity_catalog_iam_arn        = local.unity_catalog_iam_arn
   resource_prefix              = var.resource_prefix
-  uc_catalog_name              = "${var.resource_prefix}-catalog-${module.databricks_mws_workspace.workspace_id}"
+  uc_catalog_name              = var.uc_catalog_name != "" ? var.uc_catalog_name : "${var.resource_prefix}-catalog-${module.databricks_mws_workspace.workspace_id}"
   cmk_admin_arn                = var.cmk_admin_arn == null ? "arn:${local.computed_aws_partition}:iam::${var.aws_account_id}:root" : var.cmk_admin_arn
   workspace_id                 = module.databricks_mws_workspace.workspace_id
   user_workspace_catalog_admin = var.admin_user
