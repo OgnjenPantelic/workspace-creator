@@ -41,30 +41,43 @@ export function TemplateSelectionScreen() {
           </div>
         ) : (
           <>
-            {cloudTemplates.map((template) => (
-              <div
-                key={template.id}
-                className="template-card"
-                onClick={() => selectTemplate(template)}
-                onKeyDown={(e) => handleKeyDown(e, template)}
-                tabIndex={0}
-                role="button"
-                aria-label={`Select ${template.name} template`}
-              >
-                <div className="template-title">{template.name}</div>
-                <div className="template-description">{template.description}</div>
-                <div className="template-features">
-                  <ul>
-                    {template.features.map((feature, i) => (
-                      <li key={i} style={{ display: "flex", alignItems: "flex-start", gap: "8px" }}>
-                        <CheckIcon />
-                        <span>{feature}</span>
-                      </li>
-                    ))}
-                  </ul>
+            {cloudTemplates.map((template) => {
+              const inDev = template.id === "gcp-sra";
+              return (
+                <div
+                  key={template.id}
+                  className="template-card"
+                  onClick={inDev ? undefined : () => selectTemplate(template)}
+                  onKeyDown={inDev ? undefined : (e) => handleKeyDown(e, template)}
+                  tabIndex={inDev ? -1 : 0}
+                  role="button"
+                  aria-label={`Select ${template.name} template`}
+                  style={inDev ? { opacity: 0.5, cursor: "not-allowed", position: "relative" } : undefined}
+                >
+                  {inDev && (
+                    <div style={{
+                      position: "absolute", top: "12px", right: "12px",
+                      background: "#f59e0b", color: "#000", fontSize: "11px", fontWeight: 700,
+                      padding: "3px 10px", borderRadius: "4px", letterSpacing: "0.5px",
+                    }}>
+                      IN DEVELOPMENT
+                    </div>
+                  )}
+                  <div className="template-title">{template.name}</div>
+                  <div className="template-description">{template.description}</div>
+                  <div className="template-features">
+                    <ul>
+                      {template.features.map((feature, i) => (
+                        <li key={i} style={{ display: "flex", alignItems: "flex-start", gap: "8px" }}>
+                          <CheckIcon />
+                          <span>{feature}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </>
         )}
       </div>

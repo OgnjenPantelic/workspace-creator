@@ -80,10 +80,7 @@ resource "null_resource" "workspace_firewall_cleanup" {
       fi
     EOT
     
-    # Set environment for gcloud authentication
-    environment = {
-      GOOGLE_APPLICATION_CREDENTIALS = "/Users/aleksander.callebat/Documents/Databricks/fslakehouse-a08a713a0473.json"
-    }
+    # gcloud auth is inherited from the parent environment
   }
 }
 

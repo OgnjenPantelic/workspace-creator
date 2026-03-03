@@ -359,6 +359,10 @@ pub fn save_configuration(
                         "google_project".to_string(),
                         serde_json::Value::String(project_id.clone()),
                     );
+                    merged_values.insert(
+                        "project".to_string(),
+                        serde_json::Value::String(project_id.clone()),
+                    );
                 }
             }
 

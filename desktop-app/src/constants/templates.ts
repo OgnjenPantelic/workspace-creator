@@ -91,13 +91,24 @@ export const VARIABLE_DISPLAY_NAMES: Record<string, string> = {
   custom_private_subnet_ids_2: "Private Subnet ID 2",
 
   // --- SRA: GCP ---
-  google_pe_subnet: "PSC Subnet",
+  nodes_ip_cidr_range: "Workspace Subnet CIDR",
+  use_existing_vpc: "Use Existing VPC",
+  existing_vpc_name: "Existing VPC Name",
+  existing_subnet_name: "Existing Subnet Name",
+  harden_network: "Network Hardening (Firewall Rules)",
+  use_psc: "Private Service Connect (PSC)",
+  google_pe_subnet: "PSC Subnet Name",
+  google_pe_subnet_ip_cidr_range: "PSC Subnet CIDR",
   workspace_pe: "Workspace PSC Endpoint",
   relay_pe: "Relay PSC Endpoint",
   relay_pe_ip_name: "Relay PE IP Name",
   workspace_pe_ip_name: "Workspace PE IP Name",
   relay_service_attachment: "Relay Service Attachment",
   workspace_service_attachment: "Workspace Service Attachment",
+  use_existing_PSC_EP: "Use Existing PSC Endpoints",
+  use_existing_databricks_vpc_eps: "Use Existing Databricks VPC Endpoints",
+  existing_databricks_vpc_ep_workspace: "Existing Workspace VPC Endpoint ID",
+  existing_databricks_vpc_ep_relay: "Existing Relay VPC Endpoint ID",
   ip_addresses: "Allowed IP Addresses",
   account_console_url: "Account Console URL",
   key_name: "CMEK Key Name",
@@ -106,6 +117,7 @@ export const VARIABLE_DISPLAY_NAMES: Record<string, string> = {
   cmek_resource_id: "Existing CMEK Resource ID",
   use_existing_pas: "Use Existing Private Access",
   existing_pas_id: "Existing Private Access Settings ID",
+  regional_metastore_id: "Regional Metastore ID",
 };
 
 export const VARIABLE_DESCRIPTION_OVERRIDES: Record<string, string> = {
@@ -183,9 +195,21 @@ export const VARIABLE_DESCRIPTION_OVERRIDES: Record<string, string> = {
   custom_workspace_vpce_id: "Optional. Existing Workspace VPC Endpoint ID. Leave empty to create a new one.",
 
   // --- SRA: GCP ---
+  nodes_ip_cidr_range: "CIDR range for workspace nodes. Cannot be changed after creation.",
+  use_existing_vpc: "Use an existing VPC instead of creating a new one.",
+  existing_vpc_name: "Name of the existing VPC in your GCP project.",
+  existing_subnet_name: "Name of the existing subnet within the VPC.",
+  harden_network: "Enable firewall rules that restrict egress traffic to only Databricks control plane and GCP APIs.",
+  use_psc: "Use Private Service Connect for secure, private connectivity to Databricks. Recommended for production.",
   google_pe_subnet: "Subnet providing IP addresses to Private Service Connect endpoints.",
+  google_pe_subnet_ip_cidr_range: "CIDR range for the PSC endpoint subnet.",
+  use_existing_PSC_EP: "Use existing GCP PSC forwarding rules instead of creating new ones.",
+  use_existing_databricks_vpc_eps: "Use existing Databricks-registered VPC endpoints for PSC.",
+  existing_databricks_vpc_ep_workspace: "ID of an existing Databricks workspace VPC endpoint.",
+  existing_databricks_vpc_ep_relay: "ID of an existing Databricks relay VPC endpoint.",
   workspace_pe: "Name for the workspace PSC endpoint.",
   relay_pe: "Name for the relay PSC endpoint.",
+  regional_metastore_id: "ID of a regional Unity Catalog metastore to assign. Leave empty to skip metastore assignment.",
   ip_addresses: "IP addresses allowed to connect to the workspace. JSON array format (e.g. [\"0.0.0.0/0\"]).",
   key_name: "Name of the CMEK key for workspace encryption.",
   keyring_name: "Name of the CMEK keyring containing the encryption key.",
@@ -440,6 +464,27 @@ export const CONDITIONAL_FIELD_VISIBILITY: {
     toggle: "metastore_exists",
     defaultChecked: false,
     showWhenChecked: ["existing_metastore_id"],
+    showWhenUnchecked: [],
+  },
+  // GCP SRA: use existing VPC vs create new
+  {
+    toggle: "use_existing_vpc",
+    defaultChecked: false,
+    showWhenChecked: ["existing_vpc_name", "existing_subnet_name"],
+    showWhenUnchecked: ["nodes_ip_cidr_range"],
+  },
+  // GCP SRA: enable Private Service Connect
+  {
+    toggle: "use_psc",
+    defaultChecked: false,
+    showWhenChecked: [
+      "google_pe_subnet", "google_pe_subnet_ip_cidr_range",
+      "workspace_pe", "relay_pe",
+      "relay_pe_ip_name", "workspace_pe_ip_name",
+      "relay_service_attachment", "workspace_service_attachment",
+      "use_existing_PSC_EP", "use_existing_databricks_vpc_eps",
+      "existing_databricks_vpc_ep_workspace", "existing_databricks_vpc_ep_relay",
+    ],
     showWhenUnchecked: [],
   },
   // GCP SRA: use existing CMEK vs create new

@@ -69,16 +69,31 @@ const FIELD_ORDER: Record<string, number> = {
   databricks_metastore_id: 25,
   existing_ncc_id: 26,
   existing_network_policy_id: 27,
-  // GCP SRA: network / PSC fields
-  use_existing_pas: 1,
-  existing_pas_id: 2,
-  workspace_pe: 3,
-  relay_pe: 4,
-  google_pe_subnet: 5,
-  relay_pe_ip_name: 6,
-  workspace_pe_ip_name: 7,
-  relay_service_attachment: 8,
-  workspace_service_attachment: 9,
+  // GCP SRA: network
+  nodes_ip_cidr_range: 3,
+  use_existing_vpc: 1,
+  existing_vpc_name: 2,
+  existing_subnet_name: 3,
+  harden_network: 10,
+  // GCP SRA: PSC fields
+  use_psc: 11,
+  google_pe_subnet: 12,
+  google_pe_subnet_ip_cidr_range: 13,
+  workspace_pe: 14,
+  relay_pe: 15,
+  relay_pe_ip_name: 16,
+  workspace_pe_ip_name: 17,
+  relay_service_attachment: 18,
+  workspace_service_attachment: 19,
+  use_existing_PSC_EP: 20,
+  use_existing_databricks_vpc_eps: 21,
+  existing_databricks_vpc_ep_workspace: 22,
+  existing_databricks_vpc_ep_relay: 23,
+  // GCP SRA: PAS
+  use_existing_pas: 24,
+  existing_pas_id: 25,
+  // GCP SRA: metastore
+  regional_metastore_id: 1,
   // Unity Catalog (SRA)
   existing_metastore_id: 1,
   uc_catalog_name: 2,
@@ -179,16 +194,30 @@ export function groupVariablesBySection(
     custom_relay_vpce_id: "Advanced: Network Configuration",
     custom_workspace_vpce_id: "Advanced: Network Configuration",
 
-    // SRA: GCP network fields (Private Service Connect)
-    use_existing_pas: "Advanced: Network Configuration",
-    existing_pas_id: "Advanced: Network Configuration",
+    // SRA: GCP network fields
+    nodes_ip_cidr_range: "Advanced: Network Configuration",
+    use_existing_vpc: "Advanced: Network Configuration",
+    existing_vpc_name: "Advanced: Network Configuration",
+    existing_subnet_name: "Advanced: Network Configuration",
+    harden_network: "Security & Compliance",
+    // SRA: GCP PSC fields
+    use_psc: "Advanced: Network Configuration",
+    google_pe_subnet: "Advanced: Network Configuration",
+    google_pe_subnet_ip_cidr_range: "Advanced: Network Configuration",
     workspace_pe: "Advanced: Network Configuration",
     relay_pe: "Advanced: Network Configuration",
-    google_pe_subnet: "Advanced: Network Configuration",
     relay_pe_ip_name: "Advanced: Network Configuration",
     workspace_pe_ip_name: "Advanced: Network Configuration",
     relay_service_attachment: "Advanced: Network Configuration",
     workspace_service_attachment: "Advanced: Network Configuration",
+    use_existing_PSC_EP: "Advanced: Network Configuration",
+    use_existing_databricks_vpc_eps: "Advanced: Network Configuration",
+    existing_databricks_vpc_ep_workspace: "Advanced: Network Configuration",
+    existing_databricks_vpc_ep_relay: "Advanced: Network Configuration",
+    use_existing_pas: "Advanced: Network Configuration",
+    existing_pas_id: "Advanced: Network Configuration",
+    // SRA: GCP metastore
+    regional_metastore_id: "Optional Settings",
 
     // Security & Compliance
     enable_compliance_security_profile: "Security & Compliance",
@@ -356,6 +385,12 @@ export function initializeFormDefaults(
     } else if (v.name === "relay_pe_ip_name" || v.name === "workspace_pe_ip_name") {
       defaults[v.name] = "";
     } else if (v.name === "relay_service_attachment" || v.name === "workspace_service_attachment") {
+      defaults[v.name] = "";
+    } else if (v.name === "nodes_ip_cidr_range") {
+      defaults[v.name] = "10.0.0.0/16";
+    } else if (v.name === "google_pe_subnet_ip_cidr_range") {
+      defaults[v.name] = "10.3.0.0/24";
+    } else if (v.name === "regional_metastore_id") {
       defaults[v.name] = "";
     } else if (v.default !== null && v.default !== undefined) {
       const d = String(v.default).trim();
