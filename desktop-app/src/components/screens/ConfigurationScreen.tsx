@@ -71,7 +71,7 @@ export function ConfigurationScreen() {
   const setShowOptional = (v: boolean) => { _setShowOptional(v); persistCollapse("optional", v); };
   const setShowOther = (v: boolean) => { _setShowOther(v); persistCollapse("other", v); };
   const setShowSgPorts = (v: boolean) => { _setShowSgPorts(v); persistCollapse("sgPorts", v); };
-  const [createNewVpc, setCreateNewVpc] = useState(true);
+  const createNewVpc = formValues["create_new_vpc"] !== false && formValues["create_new_vpc"] !== "false";
   const onContinue = () => setScreen("unity-catalog-config");
   const onBack = goBack;
   
@@ -187,14 +187,7 @@ export function ConfigurationScreen() {
     } else {
       hidden.add("cidr");
     }
-    // AWS simple: hidden fields based on VPC toggle
-    if (createNewVpc) {
-      hidden.add("existing_vpc_id");
-      hidden.add("existing_subnet_ids");
-      hidden.add("existing_security_group_id");
-    } else {
-      hidden.add("cidr_block");
-    }
+    // AWS simple: handled by CONDITIONAL_FIELD_VISIBILITY via formValues["create_new_vpc"]
 
     // SRA: boolean toggle conditional visibility
     for (const rule of CONDITIONAL_FIELD_VISIBILITY) {
@@ -221,7 +214,7 @@ export function ConfigurationScreen() {
     }
 
     return hidden;
-  }, [formValues, createNewVnet, createNewVpc, variableNames]);
+  }, [formValues, createNewVnet, variableNames]);
 
   // Fields that are always required in the UI, even if they have Terraform defaults
   const alwaysRequired = new Set<string>([
@@ -997,7 +990,8 @@ export function ConfigurationScreen() {
         {Object.entries(sections)
           .filter(([sectionName]) => COLLAPSIBLE_SECTIONS.has(sectionName))
           .map(([sectionName, sectionVars]) => {
-            const visibleVars = sectionVars.filter(v => !hiddenFields.has(v.name));
+            const showCustomVpcToggle = sectionName === "Advanced: Network Configuration" && selectedCloud === CLOUDS.AWS && !sectionVars.some(v => v.name === "network_configuration");
+            const visibleVars = sectionVars.filter(v => !hiddenFields.has(v.name) && !(showCustomVpcToggle && v.name === "create_new_vpc"));
             if (visibleVars.length === 0) return null;
             const toggle = sectionToggle[sectionName];
             if (!toggle) return null;
@@ -1072,14 +1066,14 @@ export function ConfigurationScreen() {
                 {isOpen && (
                   <>
                     {subtitle && <p style={{ color: "#888", marginBottom: "16px", fontSize: "0.85em" }}>{subtitle}</p>}
-                    {sectionName === "Advanced: Network Configuration" && selectedCloud === CLOUDS.AWS && !variables.some(v => v.name === "network_configuration") && (
+                    {showCustomVpcToggle && (
                       <div className="form-group" style={{ marginBottom: "16px" }}>
                         <label className="checkbox-label">
                           <input
                             type="checkbox"
                             checked={createNewVpc}
                             onChange={(e) => {
-                              setCreateNewVpc(e.target.checked);
+                              handleFormChange("create_new_vpc", e.target.checked);
                               if (e.target.checked) {
                                 setFormValues(prev => ({
                                   ...prev,

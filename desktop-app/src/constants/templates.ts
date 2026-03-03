@@ -345,6 +345,11 @@ export const LIST_FIELD_DECOMPOSITION: Record<string, ListSubField[]> = {
     { key: "custom_private_subnet_ids_1", index: 0, label: "Private Subnet ID 1", description: "ID of the first existing private subnet.", required: true, placeholder: "subnet-..." },
     { key: "custom_private_subnet_ids_2", index: 1, label: "Private Subnet ID 2", description: "ID of the second existing private subnet.", required: true, placeholder: "subnet-..." },
   ],
+  // AWS simple: existing subnet IDs (when using existing VPC)
+  existing_subnet_ids: [
+    { key: "existing_subnet_ids_1", index: 0, label: "Existing Subnet ID 1", description: "ID of the first existing private subnet (AZ 1).", required: true, placeholder: "subnet-..." },
+    { key: "existing_subnet_ids_2", index: 1, label: "Existing Subnet ID 2", description: "ID of the second existing private subnet (AZ 2).", required: true, placeholder: "subnet-..." },
+  ],
 };
 
 export const FQDN_GROUPS: Record<string, { id: string; label: string; description: string; urls: string[] }[]> = {
