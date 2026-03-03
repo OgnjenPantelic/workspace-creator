@@ -193,6 +193,7 @@ pub(crate) fn sanitize_deployment_name(name: &str) -> Result<String, String> {
 }
 
 /// Mask sensitive identifiers for debug logging (show first 4 and last 4 chars).
+#[cfg_attr(not(debug_assertions), allow(dead_code))]
 pub(crate) fn mask_sensitive_id(id: &str) -> String {
     if id.len() <= 12 {
         return "***".to_string();

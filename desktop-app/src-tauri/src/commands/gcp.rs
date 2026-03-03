@@ -1,7 +1,9 @@
 //! GCP authentication, permission checking, and service account management commands.
 
 use super::debug_log;
-use super::{http_client, is_valid_uuid, mask_sensitive_id};
+use super::{http_client, is_valid_uuid};
+#[cfg(debug_assertions)]
+use super::mask_sensitive_id;
 use super::{CloudCredentials, CloudPermissionCheck};
 use crate::dependencies;
 use serde::{Deserialize, Serialize};
@@ -182,8 +184,8 @@ async fn get_gcp_oauth_token(
                     .and_then(|v| v["client_email"].as_str().map(|s| s.to_string()));
                 return Ok((token, sa_email));
             }
-            Err(e) => {
-                debug_log!("[check_gcp_permissions] Failed to generate token from JSON: {}", e);
+            Err(_e) => {
+                debug_log!("[check_gcp_permissions] Failed to generate token from JSON: {}", _e);
             }
         }
     }
@@ -823,16 +825,16 @@ pub async fn check_gcp_permissions(
         }
     };
 
-    let has_error = json_value.get("error").is_some();
-    let granted_count = json_value
+    let _has_error = json_value.get("error").is_some();
+    let _granted_count = json_value
         .get("permissions")
         .and_then(|p| p.as_array())
         .map(|arr| arr.len())
         .unwrap_or(0);
     debug_log!(
         "[check_gcp_permissions] API response: {} permissions granted, error: {}",
-        granted_count,
-        has_error
+        _granted_count,
+        _has_error
     );
 
     if let Some(error) = json_value.get("error") {
@@ -1114,10 +1116,10 @@ pub async fn create_gcp_service_account(
         .map_err(|e| format!("Failed to grant SA self Token Creator role: {}", e))?;
 
     if !sa_self_token_creator.status.success() {
-        let stderr = String::from_utf8_lossy(&sa_self_token_creator.stderr);
+        let _stderr = String::from_utf8_lossy(&sa_self_token_creator.stderr);
         debug_log!(
             "[create_gcp_service_account] Warning: Could not grant SA self Token Creator role: {}",
-            stderr.trim()
+            _stderr.trim()
         );
     }
 

@@ -17,8 +17,8 @@ pub fn run() {
             // Extract templates to app data directory on first run or when template version changes
             let app_handle = app.handle().clone();
             std::thread::spawn(move || {
-                if let Err(e) = commands::setup_templates(&app_handle) {
-                    debug_log!("Failed to setup templates: {}", e);
+                if let Err(_e) = commands::setup_templates(&app_handle) {
+                    debug_log!("Failed to setup templates: {}", _e);
                 }
             });
             Ok(())

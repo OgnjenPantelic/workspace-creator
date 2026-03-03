@@ -1,7 +1,9 @@
 //! Databricks authentication and Unity Catalog permission commands.
 
 use super::debug_log;
-use super::{databricks_accounts_host, http_client, is_valid_uuid, mask_sensitive_id};
+use super::{databricks_accounts_host, http_client, is_valid_uuid};
+#[cfg(debug_assertions)]
+use super::mask_sensitive_id;
 use super::{CloudCredentials, MetastoreInfo, UCPermissionCheck};
 use crate::dependencies;
 use serde::Serialize;
@@ -797,16 +799,16 @@ pub async fn check_uc_permissions(
                                 );
                             }
                         } else {
-                            let error_body = resp.text().await.unwrap_or_default();
+                            let _error_body = resp.text().await.unwrap_or_default();
                             debug_log!(
                                 "[check_uc_permissions] IAM API error: {}",
-                                error_body
+                                _error_body
                             );
                         }
-                    } else if let Err(e) = token_response {
+                    } else if let Err(_e) = token_response {
                         debug_log!(
                             "[check_uc_permissions] IAM API request failed: {}",
-                            e
+                            _e
                         );
                     }
                 }
@@ -844,10 +846,10 @@ pub async fn check_uc_permissions(
                                 );
                             }
                         } else {
-                            let stderr = String::from_utf8_lossy(&output.stderr);
+                            let _stderr = String::from_utf8_lossy(&output.stderr);
                             debug_log!(
                                 "[check_uc_permissions] gcloud CLI failed: {}",
-                                stderr
+                                _stderr
                             );
                         }
                     }
