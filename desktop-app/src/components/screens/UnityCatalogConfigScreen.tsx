@@ -270,7 +270,7 @@ export function UnityCatalogConfigScreen() {
         <button 
           className="btn btn-large btn-success" 
           onClick={onStartDeployment}
-          disabled={!canProceed || loading}
+          disabled={!canProceed || loading || ucCheckLoading}
         >
           {loading ? (
             <>
@@ -281,7 +281,12 @@ export function UnityCatalogConfigScreen() {
             "Create Workspace →"
           )}
         </button>
-        {!canProceed && ucConfig.enabled && (
+        {ucCheckLoading && (
+          <span style={{ color: "var(--text-muted)", fontSize: "13px" }}>
+            Checking metastore status...
+          </span>
+        )}
+        {!ucCheckLoading && !canProceed && ucConfig.enabled && (
           <span style={{ color: "var(--text-muted)", fontSize: "13px" }}>
             Fill in all required fields to continue
           </span>

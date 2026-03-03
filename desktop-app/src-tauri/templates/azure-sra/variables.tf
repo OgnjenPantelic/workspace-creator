@@ -220,7 +220,7 @@ variable "workspace_security_compliance" {
   default     = null
 
   validation {
-    condition     = var.workspace_security_compliance != null && length(var.workspace_security_compliance.compliance_security_profile_standards) > 0 ? var.workspace_security_compliance.compliance_security_profile_enabled == true : true
+    condition     = var.workspace_security_compliance != null ? (length(coalesce(var.workspace_security_compliance.compliance_security_profile_standards, [])) > 0 ? var.workspace_security_compliance.compliance_security_profile_enabled == true : true) : true
     error_message = "If a compliance standard is provided in var.workspace_security_compliance.compliance_security_profile_standards, var.workspace_security_compliance.compliance_security_profile_enabled must be true."
   }
 }

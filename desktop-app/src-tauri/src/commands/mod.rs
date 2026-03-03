@@ -123,7 +123,7 @@ pub struct UCPermissionCheck {
 // ─── Constants ──────────────────────────────────────────────────────────────
 
 /// Increment when embedded templates change to trigger a refresh.
-pub(crate) const TEMPLATES_VERSION: &str = "2.59.0";
+pub(crate) const TEMPLATES_VERSION: &str = "2.61.0";
 
 /// Variables that are automatically set by the app and hidden from the UI form.
 pub(crate) const INTERNAL_VARIABLES: &[&str] = &[

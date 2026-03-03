@@ -2507,7 +2507,7 @@ input[type="checkbox"] {
 }
 .screen-transition-active {
   opacity: 1;
-  transform: translateY(0);
+  transform: none;
   transition: opacity 0.25s ease, transform 0.25s ease;
 }
 

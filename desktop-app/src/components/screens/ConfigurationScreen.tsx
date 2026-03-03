@@ -157,6 +157,7 @@ export function ConfigurationScreen() {
 
   const removeTag = (index: number) => {
     setTagPairs(prev => {
+      if (prev[index]?.key === "databricks_deployer_template") return prev;
       const updated = prev.filter((_, i) => i !== index);
       updateTagsFormValue(updated);
       return updated;
@@ -1056,20 +1057,30 @@ export function ConfigurationScreen() {
                     <>
                       {subtitle && <p style={{ color: "#888", marginBottom: "16px", fontSize: "0.85em" }}>{subtitle}</p>}
                       <div className="tags-editor">
-                        {tagPairs.map((tag, index) => (
-                          <div key={index} style={{ display: "flex", gap: "8px", marginBottom: "8px", alignItems: "center" }}>
-                            <input type="text" autoCapitalize="none" autoCorrect="off" spellCheck={false}
-                              value={tag.key} onChange={(e) => handleTagChange(index, "key", e.target.value)}
-                              placeholder="Key (e.g., Environment)" style={{ flex: 1 }} />
-                            <input type="text" autoCapitalize="none" autoCorrect="off" spellCheck={false}
-                              value={tag.value} onChange={(e) => handleTagChange(index, "value", e.target.value)}
-                              placeholder="Value (e.g., Production)" style={{ flex: 1 }} />
-                            <button type="button" onClick={() => removeTag(index)}
-                              style={{ background: "transparent", border: "1px solid #555", color: "#e74c3c",
-                                borderRadius: "4px", padding: "6px 10px", cursor: "pointer", fontSize: "14px" }}
-                              title="Remove tag">×</button>
-                          </div>
-                        ))}
+                        {tagPairs.map((tag, index) => {
+                          const isDefault = tag.key === "databricks_deployer_template";
+                          return (
+                            <div key={index} style={{ display: "flex", gap: "8px", marginBottom: "8px", alignItems: "center" }}>
+                              <input type="text" autoCapitalize="none" autoCorrect="off" spellCheck={false}
+                                value={tag.key} onChange={(e) => handleTagChange(index, "key", e.target.value)}
+                                placeholder="Key (e.g., Environment)" style={{ flex: 1, ...(isDefault ? { opacity: 0.6 } : {}) }}
+                                disabled={isDefault} />
+                              <input type="text" autoCapitalize="none" autoCorrect="off" spellCheck={false}
+                                value={tag.value} onChange={(e) => handleTagChange(index, "value", e.target.value)}
+                                placeholder="Value (e.g., Production)" style={{ flex: 1, ...(isDefault ? { opacity: 0.6 } : {}) }}
+                                disabled={isDefault} />
+                              {isDefault ? (
+                                <span style={{ width: "34px", textAlign: "center", fontSize: "14px", color: "#555" }}
+                                  title="Default tag (read-only)">🔒</span>
+                              ) : (
+                                <button type="button" onClick={() => removeTag(index)}
+                                  style={{ background: "transparent", border: "1px solid #555", color: "#e74c3c",
+                                    borderRadius: "4px", padding: "6px 10px", cursor: "pointer", fontSize: "14px" }}
+                                  title="Remove tag">×</button>
+                              )}
+                            </div>
+                          );
+                        })}
                         <button type="button" onClick={addTag}
                           style={{ background: "transparent", border: "1px dashed #555", color: "#888",
                             borderRadius: "4px", padding: "8px 16px", cursor: "pointer", fontSize: "13px", width: "100%" }}>

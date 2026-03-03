@@ -233,6 +233,7 @@ export function WizardProvider({ children }: { children: ReactNode }) {
     // Clear all cloud-specific credentials when switching clouds
     setCredentials(prev => {
       const base = {
+        cloud,
         databricks_account_id: prev.databricks_account_id, // Keep account ID
       };
       
@@ -300,8 +301,11 @@ export function WizardProvider({ children }: { children: ReactNode }) {
           gcpAccount: gcp.validation?.account,
           awsAccountId: aws.identity?.account,
         });
+        const templateTagValue = template.id.replace(/-/g, "_");
+        const defaultTag = { key: "databricks_deployer_template", value: templateTagValue };
+        defaults.tags = JSON.stringify({ [defaultTag.key]: defaultTag.value });
         setFormValues(defaults);
-        setTagPairs([]);
+        setTagPairs([defaultTag]);
       }
 
       if (selectedCloud === CLOUDS.AZURE) {

@@ -37,8 +37,8 @@ export const SCREEN_CONTEXT: Record<string, string> = {
   "azure-credentials": "The user is configuring Azure credentials. Two modes: 'Azure CLI' (recommended, uses 'az login') or 'Service Principal' (Tenant ID, Subscription ID, Client ID, Client Secret). After auth, they select a subscription and the app checks role assignments.",
   "gcp-credentials": "The user is configuring GCP credentials. Two modes: 'Application Default Credentials' (recommended, uses gcloud + service account impersonation) or 'Service Account Key' (paste JSON key). The service account needs Owner role on the project.",
   "databricks-credentials": "The user is entering Databricks account credentials. For GCP/Azure-identity: just the Account ID. For AWS/Azure-SP: either a CLI profile from ~/.databrickscfg (service principal only) or Client ID + Client Secret. The Account ID is a UUID from the Databricks Account Console.",
-  "template-selection": "The user is selecting a Terraform deployment template. Currently one template per cloud (aws-simple, azure-simple, gcp-simple). Each shows what infrastructure it creates.",
-  "configuration": "The user is filling in Terraform template variables: workspace name, region, networking (VPC/VNet/subnet CIDRs), tags, and optional advanced settings like existing VPC/VNet. Values have validation rules.",
+  "template-selection": "The user is selecting a Terraform deployment template. There are two templates per cloud: a Standard template (aws-simple, azure-simple, gcp-simple) for straightforward deployments, and an SRA (Security Reference Architecture) template (aws-sra, azure-sra, gcp-sra) for enterprise/regulated environments with PrivateLink/PE/PSC, customer-managed encryption keys, and compliance controls. Each card shows features.",
+  "configuration": "The user is filling in Terraform template variables. Standard templates have: workspace name, region, networking (VPC/VNet/subnet CIDRs), tags, and optional existing VPC/VNet settings. SRA templates have additional options: PrivateLink/PE/PSC configuration, CMK/CMEK encryption settings, compliance profiles, Security Analysis Tool (SAT), firewall rules (Azure), hub-spoke architecture (Azure), network hardening (GCP), and IP access lists (GCP). Values have validation rules.",
   "unity-catalog-config": "The user is configuring Unity Catalog (optional). They can enable it with a catalog name and storage location (S3 bucket/Azure Storage/GCS bucket). The app auto-detects if a metastore exists in the region. Storage names must be globally unique.",
   "deployment": "The user is on the deployment screen. Terraform runs in stages: init → plan → review → apply. They can see real-time output, review the plan before applying, cancel a running deployment, or rollback after failure. Deployment typically takes 5-15 minutes.",
 };
@@ -78,13 +78,15 @@ export const ASSISTANT_SAMPLE_QUESTIONS: Record<string, string[]> = {
     "Can I use my existing databrickscfg profile?",
   ],
   "template-selection": [
-    "What does the templates create?",
+    "What's the difference between Standard and SRA templates?",
+    "When should I use the SRA template?",
     "Can I use an existing VPC?",
-    "What's the difference between templates?",
   ],
   "configuration": [
     "What CIDR ranges should I use?",
     "How do I configure VPC settings?",
+    "Should I enable CMK encryption?",
+    "What is the Compliance Security Profile?",
   ],
   "unity-catalog-config": [
     "What is Unity Catalog?",

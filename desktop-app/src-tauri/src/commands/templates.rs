@@ -46,25 +46,32 @@ pub fn setup_templates(app: &AppHandle) -> Result<(), String> {
     let templates_source = if source_templates.exists() {
         source_templates
     } else {
-        let exe_path = std::env::current_exe().map_err(|e| e.to_string())?;
-        let mut search_path = exe_path.parent();
+        // In dev builds, CARGO_MANIFEST_DIR points to src-tauri/
+        let manifest_candidate =
+            std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("templates");
+        if manifest_candidate.exists() {
+            manifest_candidate
+        } else {
+            let exe_path = std::env::current_exe().map_err(|e| e.to_string())?;
+            let mut search_path = exe_path.parent();
 
-        let mut dev_templates = None;
-        while let Some(path) = search_path {
-            let candidate = path.join("src-tauri").join("templates");
-            if candidate.exists() {
-                dev_templates = Some(candidate);
-                break;
+            let mut dev_templates = None;
+            while let Some(path) = search_path {
+                let candidate = path.join("src-tauri").join("templates");
+                if candidate.exists() {
+                    dev_templates = Some(candidate);
+                    break;
+                }
+                search_path = path.parent();
             }
-            search_path = path.parent();
-        }
 
-        match dev_templates {
-            Some(path) => path,
-            None => {
-                return Err(
-                    "Templates not found in resource dir or src-tauri directory".to_string(),
-                )
+            match dev_templates {
+                Some(path) => path,
+                None => {
+                    return Err(
+                        "Templates not found in resource dir or src-tauri directory".to_string(),
+                    )
+                }
             }
         }
     };

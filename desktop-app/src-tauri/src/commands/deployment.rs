@@ -1,8 +1,8 @@
 //! Terraform deployment, configuration, and lifecycle management commands.
 
 use super::{
-    copy_dir_all, get_deployments_dir, get_templates_dir, opt_non_empty, sanitize_deployment_name,
-    sanitize_template_id, CloudCredentials,
+    copy_dir_all, debug_log, get_deployments_dir, get_templates_dir, opt_non_empty,
+    sanitize_deployment_name, sanitize_template_id, CloudCredentials,
 };
 use crate::dependencies::{self, DependencyStatus};
 use crate::terraform::{self, DeploymentStatus, CURRENT_PROCESS, DEPLOYMENT_STATUS};
@@ -55,6 +55,64 @@ fn has_databricks_sp_creds(credentials: &CloudCredentials) -> bool {
         && opt_non_empty(&credentials.databricks_client_secret)
 }
 
+/// Locate a Google Application Default Credentials JSON file.
+///
+/// The Databricks Terraform provider authenticates via Google's ADC chain
+/// when `google_service_account` is set (impersonation mode). We check:
+///   1. The standard ADC path (`gcloud auth application-default login`)
+///   2. The legacy per-account path (`gcloud auth login`)
+fn find_gcp_adc_path() -> Option<String> {
+    let home = dirs::home_dir()?;
+
+    let standard_adc = home.join(".config/gcloud/application_default_credentials.json");
+    if standard_adc.exists() {
+        debug_log!("[find_gcp_adc_path] found standard ADC: {:?}", standard_adc);
+        return Some(standard_adc.to_string_lossy().to_string());
+    }
+
+    let gcloud = dependencies::find_gcloud_cli_path()?;
+    let account = std::process::Command::new(&gcloud)
+        .args(["config", "get-value", "account"])
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+        .filter(|s| !s.is_empty() && s != "(unset)")?;
+
+    let legacy_adc = home
+        .join(".config/gcloud/legacy_credentials")
+        .join(&account)
+        .join("adc.json");
+    if legacy_adc.exists() {
+        debug_log!("[find_gcp_adc_path] found legacy ADC for {}: {:?}", account, legacy_adc);
+        return Some(legacy_adc.to_string_lossy().to_string());
+    }
+
+    debug_log!("[find_gcp_adc_path] no ADC file found");
+    None
+}
+
+/// Get a fresh GCP user OAuth token via gcloud CLI (for the Google Terraform provider).
+/// Bypasses impersonation so the token belongs to the user, not the SA.
+///
+/// Uses the `CLOUDSDK_AUTH_IMPERSONATE_SERVICE_ACCOUNT` env-var override (set to
+/// empty) instead of mutating the global gcloud config, avoiding race conditions
+/// and leaving the user's config untouched.
+fn refresh_gcp_user_token() -> Option<String> {
+    let gcloud = dependencies::find_gcloud_cli_path()?;
+
+    let token_output = std::process::Command::new(&gcloud)
+        .args(["auth", "print-access-token"])
+        .env("CLOUDSDK_AUTH_IMPERSONATE_SERVICE_ACCOUNT", "")
+        .output()
+        .ok();
+
+    token_output
+        .filter(|o| o.status.success())
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+        .filter(|s| !s.is_empty())
+}
+
 /// Build the environment variables map that Terraform needs from credentials.
 fn build_env_vars(credentials: &CloudCredentials) -> HashMap<String, String> {
     let mut env_vars = HashMap::new();
@@ -89,6 +147,18 @@ fn build_env_vars(credentials: &CloudCredentials) -> HashMap<String, String> {
 
     if opt_non_empty(&credentials.gcp_credentials_json) {
         set_env_if_present(&mut env_vars, "GOOGLE_CREDENTIALS", &credentials.gcp_credentials_json);
+    } else if is_gcp {
+        // Databricks SDK uses Google ADC for impersonation auth — point it at gcloud creds
+        if let Some(adc_path) = find_gcp_adc_path() {
+            env_vars.insert("GOOGLE_APPLICATION_CREDENTIALS".to_string(), adc_path);
+        }
+
+        // Google Terraform provider needs an OAuth token when no GOOGLE_CREDENTIALS is set
+        let token = refresh_gcp_user_token()
+            .or_else(|| credentials.gcp_oauth_token.clone().filter(|s| !s.is_empty()));
+        if let Some(t) = token {
+            env_vars.insert("GOOGLE_OAUTH_ACCESS_TOKEN".to_string(), t);
+        }
     } else {
         set_env_if_present(
             &mut env_vars,
@@ -925,15 +995,17 @@ mod tests {
     }
 
     #[test]
-    fn build_env_vars_gcp_oauth_fallback() {
+    fn build_env_vars_gcp_impersonation_mode() {
         let creds = CloudCredentials {
             gcp_oauth_token: Some("oauth-token".to_string()),
             cloud: Some("gcp".to_string()),
             ..Default::default()
         };
         let env = build_env_vars(&creds);
-        assert_eq!(env.get("GOOGLE_OAUTH_ACCESS_TOKEN"), Some(&"oauth-token".to_string()));
         assert!(!env.contains_key("GOOGLE_CREDENTIALS"));
+        assert_eq!(env.get("DATABRICKS_CONFIG_FILE"), Some(&"/dev/null".to_string()));
+        // GOOGLE_APPLICATION_CREDENTIALS is set when a gcloud ADC file exists on the machine
+        // GOOGLE_OAUTH_ACCESS_TOKEN is set from gcloud CLI or the stored fallback value
     }
 
     #[test]

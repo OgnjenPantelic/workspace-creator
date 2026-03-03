@@ -96,7 +96,6 @@ variable "custom_workspace_vpce_id" {
 variable "databricks_account_id" {
   description = "ID of the Databricks account."
   type        = string
-  sensitive   = true
 }
 
 variable "databricks_gov_shard" {

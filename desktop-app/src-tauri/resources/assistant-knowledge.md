@@ -78,6 +78,52 @@ Creates: VPC with Databricks subnet, GCS bucket, Databricks workspace.
 - **Subnet CIDR** — address range for the Databricks subnet (default: 10.0.0.0/16).
 - **Resource Tags** — optional key-value labels for GCP resources.
 
+## Standard vs SRA Templates
+Each cloud has two template options:
+- **Standard** — Quick setup for dev/test or straightforward production environments. Simpler networking (public subnets with NAT), default cloud encryption, fewer configuration options.
+- **SRA (Security Reference Architecture)** — Enterprise-grade deployment for production and regulated environments. No public internet access (uses PrivateLink / Private Endpoints / PSC), customer-managed encryption keys (CMK/CMEK), compliance controls (Compliance Security Profile, Security Analysis Tool, audit logs), modular architecture. More configuration complexity but much stronger security posture.
+
+## AWS Security Reference Architecture (SRA)
+Creates: VPC with PrivateLink endpoints (backend REST + SCC relay), CMK encryption (KMS keys for managed services and managed disks), cross-account IAM role, S3 root bucket with restrictive policy, Databricks workspace, network connectivity configuration (NCC), network policy, audit log delivery, Unity Catalog with isolated catalog. Optionally enables SAT and Compliance Security Profile.
+- **Resource Prefix** — prefix for all resource names (1-26 chars, lowercase letters, digits, hyphens, dots only).
+- **Region** — AWS region (validated list including GovCloud us-gov-west-1).
+- **Network Configuration** — `custom` (bring your own VPC) or `isolated` (creates a new VPC with full isolation).
+- **VPC CIDR** — address space for the new VPC (when using isolated network configuration).
+- **Private Subnet CIDRs** — CIDR list for private subnets.
+- **PrivateLink Subnet CIDRs** — CIDR list for PrivateLink endpoint subnets.
+- **Enable Compliance Security Profile** — toggle to enable the Databricks Compliance Security Profile.
+- **Enable Security Analysis Tool** — toggle to deploy SAT for continuous security monitoring.
+- **CMK Admin ARN** — ARN of the IAM principal that administers the KMS encryption keys. If omitted, defaults to the deploying identity.
+- Advanced: **Custom VPC ID**, **Custom Subnet IDs**, **Custom Security Group ID**, **Custom VPC Endpoint IDs** — bring an existing VPC and endpoints instead of creating new ones.
+- GovCloud: **Databricks Gov Shard** (civilian or dod) and **AWS Partition** for us-gov-west-1 deployments.
+
+## Azure Security Reference Architecture (SRA)
+Creates: Hub-spoke VNet architecture with hub workspace (webauth) and spoke workspace, Private Endpoints (DBFS, backend, webauth), Azure Firewall with FQDN filtering, Key Vault with CMK encryption (managed disks + managed services), NCC + network policy, Unity Catalog. Optionally enables SAT.
+- **Resource Suffix** — suffix for naming workspace resources (e.g. "dbx-dev", "sra").
+- **Hub Resource Suffix** — suffix for naming hub resources (required when creating hub).
+- **Location** — Azure region.
+- **Hub VNet CIDR** — CIDR for the hub Virtual Network (required when creating hub).
+- **Workspace VNet** — CIDR and optional new_bits for the spoke network. The spoke VNet is peered with the hub.
+- **Create Hub** toggle — when enabled, creates the full hub infrastructure (firewall, Key Vault, Unity Catalog, webauth workspace). When disabled, provide existing hub VNet, NCC, network policy, and CMK IDs.
+- **CMK Enabled** toggle — enable customer-managed keys for workspace encryption using Azure Key Vault.
+- **Workspace Security Compliance** — compliance profile enablement, compliance standards list, automatic cluster update, enhanced security monitoring.
+- **SAT Configuration** — enable/disable Security Analysis Tool, schema name, catalog name, serverless toggle. When SAT is enabled, required FQDNs must be added to allowed list.
+- **Allowed FQDNs** — domains the spoke workspace can access through the firewall (e.g. python.org, pypi.org for SAT).
+- **Tags** — optional key-value pairs.
+
+## GCP Security Reference Architecture (SRA)
+Creates: VPC with hardened firewall rules, optional PSC endpoints (workspace + relay), CMEK encryption (Cloud KMS key and keyring), IP access list restrictions, Private Access Settings, workspace with modular deployment. Optionally assigns existing metastore.
+- **Workspace Name** — name for the Databricks workspace.
+- **Region** — GCP region.
+- **Nodes CIDR** — subnet CIDR for workspace nodes (default: 10.0.0.0/16). Cannot be changed after creation.
+- **Harden Network** toggle — enables strict VPC firewall rules that restrict egress traffic.
+- **Use PSC** toggle — enables Private Service Connect for fully private workspace connectivity. Requires PSC endpoint names and service attachment URIs.
+- **CMEK** options — **Key Name** and **Keyring Name** to create new Cloud KMS resources, or **Existing CMEK Resource ID** to reuse an existing key.
+- **IP Addresses** — list of CIDRs allowed to access the workspace (default: 0.0.0.0/0 = open).
+- **Use Existing VPC** toggle — reuse an existing VPC and subnet instead of creating new ones.
+- **Private Access Settings** — use existing PAS or create new ones for private connectivity.
+- **Regional Metastore ID** — ID of an existing Unity Catalog metastore to assign (leave empty to skip).
+
 # Unity Catalog
 Unified governance for data and AI. When enabled:
 - Auto-detects existing metastore in target region (reuses if found, creates if not). Click **"Refresh"** to re-check for metastore.

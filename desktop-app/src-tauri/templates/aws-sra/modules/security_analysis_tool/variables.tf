@@ -40,7 +40,6 @@ variable "analysis_schema_name" {
 variable "databricks_account_id" {
   description = "ID of the Databricks account"
   type        = string
-  sensitive   = true
 }
 
 variable "workspace_id" {

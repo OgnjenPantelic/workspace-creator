@@ -122,6 +122,111 @@ fn run_git(dir: &Path, args: &[&str]) -> Result<(String, String, bool), String> 
     Ok((stdout, stderr, output.status.success()))
 }
 
+/// Get the current branch name, falling back to "main" if detection fails.
+fn current_branch(dir: &Path) -> String {
+    run_git(dir, &["rev-parse", "--abbrev-ref", "HEAD"])
+        .ok()
+        .and_then(|(stdout, _, ok)| {
+            if ok {
+                let name = stdout.trim().to_string();
+                if name.is_empty() || name == "HEAD" { None } else { Some(name) }
+            } else {
+                None
+            }
+        })
+        .unwrap_or_else(|| "main".to_string())
+}
+
+/// Ensure git user.name and user.email are configured at the repo level.
+/// Falls back to the persisted GitHub username + noreply email, or a
+/// sensible default so that `git commit` never fails with "Author identity unknown".
+fn ensure_git_identity(dir: &Path, app: &AppHandle) {
+    let has_name = run_git(dir, &["config", "user.name"])
+        .map(|(_, _, ok)| ok)
+        .unwrap_or(false);
+    let has_email = run_git(dir, &["config", "user.email"])
+        .map(|(_, _, ok)| ok)
+        .unwrap_or(false);
+
+    if has_name && has_email {
+        return;
+    }
+
+    let username = load_github_settings(app)
+        .ok()
+        .and_then(|s| s.github_username)
+        .unwrap_or_else(|| "Databricks Deployer".to_string());
+
+    if !has_name {
+        let _ = run_git(dir, &["config", "user.name", &username]);
+    }
+    if !has_email {
+        let email = format!("{}@users.noreply.github.com", username);
+        let _ = run_git(dir, &["config", "user.email", &email]);
+    }
+
+    debug_log!("[github] Configured local git identity for {:?}", dir);
+}
+
+/// Ensure the deployment directory contains a git repo with at least one commit.
+///
+/// Idempotent: returns `Ok(false)` immediately when a commit already exists.
+/// Returns `Ok(true)` when a fresh initial commit was created.
+fn ensure_initial_commit(dir: &Path, app: &AppHandle, include_values: bool) -> Result<bool, String> {
+    let git_exists = dir.join(".git").exists();
+    let has_commits = git_exists
+        && run_git(dir, &["rev-parse", "HEAD"])
+            .map(|(_, _, ok)| ok)
+            .unwrap_or(false);
+
+    if has_commits {
+        return Ok(false);
+    }
+
+    if dir.join("variables.tf").exists() && dir.join("terraform.tfvars").exists() {
+        let entries = build_preview_entries(dir)?;
+        write_tfvars_example(dir, &entries, include_values)?;
+    }
+
+    ensure_tfvars_ignored(dir)?;
+
+    if !git_exists {
+        let (_, _init_err, ok) = run_git(dir, &["init", "-b", "main"])?;
+        if !ok {
+            let (_, init_err2, ok2) = run_git(dir, &["init"])?;
+            if !ok2 {
+                return Err(format!("git init failed: {}", init_err2));
+            }
+            let _ = run_git(dir, &["symbolic-ref", "HEAD", "refs/heads/main"]);
+            debug_log!("[github] Fell back to git init + symbolic-ref (old git version)");
+        }
+    }
+
+    ensure_git_identity(dir, app);
+
+    let (_, stderr, ok) = run_git(dir, &["add", "."])?;
+    if !ok {
+        return Err(format!("git add failed: {}", stderr));
+    }
+
+    let (staged, _, _) = run_git(dir, &["diff", "--cached", "--name-only"])?;
+    if staged.lines().any(|f| f == "terraform.tfvars") {
+        let _ = run_git(dir, &["rm", "--cached", "terraform.tfvars"]);
+        debug_log!("[github] Removed terraform.tfvars from staging — .gitignore may be stale");
+    }
+
+    let (_, stderr, ok) = run_git(
+        dir,
+        &["commit", "-m", "Initial infrastructure deployment"],
+    )?;
+    if !ok {
+        return Err(format!("git commit failed: {}", stderr));
+    }
+
+    debug_log!("[github] Created initial commit in {:?}", dir);
+    Ok(true)
+}
+
 /// Ensure .gitignore properly excludes *.tfvars before any git operations.
 /// Appends the rules if they're missing (safety net for older templates).
 fn ensure_tfvars_ignored(deployment_dir: &Path) -> Result<(), String> {
@@ -450,54 +555,15 @@ pub fn git_init_repo(
 ) -> Result<GitOperationResult, String> {
     let dir = resolve_deployment_dir(&app, &deployment_name)?;
 
-    if dir.join(".git").exists() {
-        return Ok(GitOperationResult {
-            success: true,
-            message: "Repository already initialized".to_string(),
-        });
-    }
-
-    if dir.join("variables.tf").exists() && dir.join("terraform.tfvars").exists() {
-        let entries = build_preview_entries(&dir)?;
-        write_tfvars_example(&dir, &entries, include_values)?;
-        debug_log!(
-            "[github] Wrote terraform.tfvars.example (include_values={})",
-            include_values
-        );
-    }
-
-    ensure_tfvars_ignored(&dir)?;
-
-    let (_, stderr, ok) = run_git(&dir, &["init", "-b", "main"])?;
-    if !ok {
-        return Err(format!("git init failed: {}", stderr));
-    }
-
-    let (_, stderr, ok) = run_git(&dir, &["add", "."])?;
-    if !ok {
-        return Err(format!("git add failed: {}", stderr));
-    }
-
-    // Verify terraform.tfvars is NOT staged (safety check)
-    let (staged, _, _) = run_git(&dir, &["diff", "--cached", "--name-only"])?;
-    if staged.lines().any(|f| f == "terraform.tfvars") {
-        let _ = run_git(&dir, &["rm", "--cached", "terraform.tfvars"]);
-        debug_log!("[github] Removed terraform.tfvars from staging — .gitignore may be stale");
-    }
-
-    let (_, stderr, ok) = run_git(
-        &dir,
-        &["commit", "-m", "Initial infrastructure deployment"],
-    )?;
-    if !ok {
-        return Err(format!("git commit failed: {}", stderr));
-    }
-
-    debug_log!("[github] Initialized git repo at {:?}", dir);
+    let created = ensure_initial_commit(&dir, &app, include_values)?;
 
     Ok(GitOperationResult {
         success: true,
-        message: "Repository initialized with initial commit".to_string(),
+        message: if created {
+            "Repository initialized with initial commit".to_string()
+        } else {
+            "Repository already initialized".to_string()
+        },
     })
 }
 
@@ -557,6 +623,11 @@ pub fn git_push_to_remote(
         return Err("Repository not initialized. Run git init first.".to_string());
     }
 
+    let (_, _, has_commits) = run_git(&dir, &["rev-parse", "HEAD"])?;
+    if !has_commits {
+        return Err("Repository has no commits. Initialize the repository first.".to_string());
+    }
+
     // Check if origin already exists
     let (_, _, has_origin) = run_git(&dir, &["remote", "get-url", "origin"])?;
 
@@ -573,9 +644,9 @@ pub fn git_push_to_remote(
         }
     }
 
-    let (_, stderr, ok) = run_git(&dir, &["push", "-u", "origin", "main"])?;
+    let branch = current_branch(&dir);
+    let (_, stderr, ok) = run_git(&dir, &["push", "-u", "origin", &branch])?;
     if !ok {
-        // Provide actionable error messages
         if stderr.contains("Authentication failed")
             || stderr.contains("could not read Username")
             || stderr.contains("Permission denied")
@@ -884,9 +955,7 @@ pub async fn github_create_repo(
     // Push using token-authenticated URL for this push only, then reset to clean URL
     let dir = resolve_deployment_dir(&app, &deployment_name)?;
 
-    if !dir.join(".git").exists() {
-        return Err("Repository not initialized. Run git init first.".to_string());
-    }
+    ensure_initial_commit(&dir, &app, true)?;
 
     let owner = resp_body["owner"]["login"]
         .as_str()
@@ -912,7 +981,8 @@ pub async fn github_create_repo(
         }
     }
 
-    let (_, stderr, ok) = run_git(&dir, &["push", "-u", "origin", "main"])?;
+    let branch = current_branch(&dir);
+    let (_, stderr, ok) = run_git(&dir, &["push", "-u", "origin", &branch])?;
 
     // Always reset to clean URL regardless of push success
     let _ = run_git(&dir, &["remote", "set-url", "origin", &clone_url]);
