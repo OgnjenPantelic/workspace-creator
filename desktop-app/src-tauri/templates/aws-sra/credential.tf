@@ -33,11 +33,11 @@ resource "aws_iam_role_policy" "cross_account" {
           "ec2:RunInstances"
         ],
         "Resource" : [
-          "arn:${local.computed_aws_partition}:ec2:${var.region}:${var.aws_account_id}:volume/*",
-          "arn:${local.computed_aws_partition}:ec2:${var.region}:${var.aws_account_id}:instance/*",
-          "arn:${local.computed_aws_partition}:ec2:${var.region}:${var.aws_account_id}:fleet/*",
-          "arn:${local.computed_aws_partition}:ec2:${var.region}:${var.aws_account_id}:launch-template/*",
-          "arn:${local.computed_aws_partition}:ec2:${var.region}:${var.aws_account_id}:network-interface/*"
+          "arn:${local.computed_aws_partition}:ec2:${var.region}:${local.aws_account_id}:volume/*",
+          "arn:${local.computed_aws_partition}:ec2:${var.region}:${local.aws_account_id}:instance/*",
+          "arn:${local.computed_aws_partition}:ec2:${var.region}:${local.aws_account_id}:fleet/*",
+          "arn:${local.computed_aws_partition}:ec2:${var.region}:${local.aws_account_id}:launch-template/*",
+          "arn:${local.computed_aws_partition}:ec2:${var.region}:${local.aws_account_id}:network-interface/*"
         ],
         "Condition" : {
           "StringEquals" : {
@@ -52,11 +52,11 @@ resource "aws_iam_role_policy" "cross_account" {
           "ec2:CreateTags"
         ],
         "Resource" : [
-          "arn:${local.computed_aws_partition}:ec2:${var.region}:${var.aws_account_id}:volume/*",
-          "arn:${local.computed_aws_partition}:ec2:${var.region}:${var.aws_account_id}:instance/*",
-          "arn:${local.computed_aws_partition}:ec2:${var.region}:${var.aws_account_id}:launch-template/*",
-          "arn:${local.computed_aws_partition}:ec2:${var.region}:${var.aws_account_id}:fleet/*",
-          "arn:${local.computed_aws_partition}:ec2:${var.region}:${var.aws_account_id}:network-interface/*"
+          "arn:${local.computed_aws_partition}:ec2:${var.region}:${local.aws_account_id}:volume/*",
+          "arn:${local.computed_aws_partition}:ec2:${var.region}:${local.aws_account_id}:instance/*",
+          "arn:${local.computed_aws_partition}:ec2:${var.region}:${local.aws_account_id}:launch-template/*",
+          "arn:${local.computed_aws_partition}:ec2:${var.region}:${local.aws_account_id}:fleet/*",
+          "arn:${local.computed_aws_partition}:ec2:${var.region}:${local.aws_account_id}:network-interface/*"
         ],
         "Condition" : {
           "StringEquals" : {
@@ -91,12 +91,12 @@ resource "aws_iam_role_policy" "cross_account" {
           "ec2:RunInstances"
         ],
         "Resource" : [
-          "arn:${local.computed_aws_partition}:ec2:${var.region}:${var.aws_account_id}:instance/*",
-          "arn:${local.computed_aws_partition}:ec2:${var.region}:${var.aws_account_id}:volume/*",
-          "arn:${local.computed_aws_partition}:ec2:${var.region}:${var.aws_account_id}:network-interface/*",
-          "arn:${local.computed_aws_partition}:ec2:${var.region}:${var.aws_account_id}:launch-template/*",
-          "arn:${local.computed_aws_partition}:ec2:${var.region}:${var.aws_account_id}:fleet/*",
-          "arn:${local.computed_aws_partition}:ec2:${var.region}:${var.aws_account_id}:spot-instance-request/*"
+          "arn:${local.computed_aws_partition}:ec2:${var.region}:${local.aws_account_id}:instance/*",
+          "arn:${local.computed_aws_partition}:ec2:${var.region}:${local.aws_account_id}:volume/*",
+          "arn:${local.computed_aws_partition}:ec2:${var.region}:${local.aws_account_id}:network-interface/*",
+          "arn:${local.computed_aws_partition}:ec2:${var.region}:${local.aws_account_id}:launch-template/*",
+          "arn:${local.computed_aws_partition}:ec2:${var.region}:${local.aws_account_id}:fleet/*",
+          "arn:${local.computed_aws_partition}:ec2:${var.region}:${local.aws_account_id}:spot-instance-request/*"
         ],
         "Condition" : {
           "StringEquals" : {
@@ -111,9 +111,9 @@ resource "aws_iam_role_policy" "cross_account" {
           "ec2:GetLaunchTemplateData"
         ],
         "Resource" : [
-          "arn:${local.computed_aws_partition}:ec2:${var.region}:${var.aws_account_id}:volume/*",
-          "arn:${local.computed_aws_partition}:ec2:${var.region}:${var.aws_account_id}:instance/*",
-          "arn:${local.computed_aws_partition}:ec2:${var.region}:${var.aws_account_id}:fleet/*"
+          "arn:${local.computed_aws_partition}:ec2:${var.region}:${local.aws_account_id}:volume/*",
+          "arn:${local.computed_aws_partition}:ec2:${var.region}:${local.aws_account_id}:instance/*",
+          "arn:${local.computed_aws_partition}:ec2:${var.region}:${local.aws_account_id}:fleet/*"
         ],
         "Condition" : {
           "StringEquals" : {
@@ -133,12 +133,12 @@ resource "aws_iam_role_policy" "cross_account" {
           "ec2:TerminateInstances"
         ],
         "Resource" : [
-          "arn:${local.computed_aws_partition}:ec2:${var.region}:${var.aws_account_id}:instance/*",
-          "arn:${local.computed_aws_partition}:ec2:${var.region}:${var.aws_account_id}:volume/*",
-          "arn:${local.computed_aws_partition}:ec2:${var.region}:${var.aws_account_id}:network-interface/*",
-          "arn:${local.computed_aws_partition}:ec2:${var.region}:${var.aws_account_id}:launch-template/*",
-          "arn:${local.computed_aws_partition}:ec2:${var.region}:${var.aws_account_id}:fleet/*",
-          "arn:${local.computed_aws_partition}:ec2:${var.region}:${var.aws_account_id}:spot-instance-request/*"
+          "arn:${local.computed_aws_partition}:ec2:${var.region}:${local.aws_account_id}:instance/*",
+          "arn:${local.computed_aws_partition}:ec2:${var.region}:${local.aws_account_id}:volume/*",
+          "arn:${local.computed_aws_partition}:ec2:${var.region}:${local.aws_account_id}:network-interface/*",
+          "arn:${local.computed_aws_partition}:ec2:${var.region}:${local.aws_account_id}:launch-template/*",
+          "arn:${local.computed_aws_partition}:ec2:${var.region}:${local.aws_account_id}:fleet/*",
+          "arn:${local.computed_aws_partition}:ec2:${var.region}:${local.aws_account_id}:spot-instance-request/*"
         ],
         "Condition" : {
           "StringEquals" : {
@@ -184,12 +184,12 @@ resource "aws_iam_role_policy" "cross_account" {
           "ec2:DeleteTags"
         ],
         "Resource" : [
-          "arn:${local.computed_aws_partition}:ec2:${var.region}:${var.aws_account_id}:instance/*",
-          "arn:${local.computed_aws_partition}:ec2:${var.region}:${var.aws_account_id}:volume/*",
-          "arn:${local.computed_aws_partition}:ec2:${var.region}:${var.aws_account_id}:network-interface/*",
-          "arn:${local.computed_aws_partition}:ec2:${var.region}:${var.aws_account_id}:launch-template/*",
-          "arn:${local.computed_aws_partition}:ec2:${var.region}:${var.aws_account_id}:fleet/*",
-          "arn:${local.computed_aws_partition}:ec2:${var.region}:${var.aws_account_id}:spot-instance-request/*"
+          "arn:${local.computed_aws_partition}:ec2:${var.region}:${local.aws_account_id}:instance/*",
+          "arn:${local.computed_aws_partition}:ec2:${var.region}:${local.aws_account_id}:volume/*",
+          "arn:${local.computed_aws_partition}:ec2:${var.region}:${local.aws_account_id}:network-interface/*",
+          "arn:${local.computed_aws_partition}:ec2:${var.region}:${local.aws_account_id}:launch-template/*",
+          "arn:${local.computed_aws_partition}:ec2:${var.region}:${local.aws_account_id}:fleet/*",
+          "arn:${local.computed_aws_partition}:ec2:${var.region}:${local.aws_account_id}:spot-instance-request/*"
         ],
         "Condition" : {
           "StringEquals" : {
@@ -232,12 +232,12 @@ resource "aws_iam_role_policy" "cross_account" {
         "Effect" : "Allow",
         "Action" : "ec2:RunInstances",
         "Resource" : [
-          "arn:${local.computed_aws_partition}:ec2:${var.region}:${var.aws_account_id}:subnet/*",
-          "arn:${local.computed_aws_partition}:ec2:${var.region}:${var.aws_account_id}:security-group/*"
+          "arn:${local.computed_aws_partition}:ec2:${var.region}:${local.aws_account_id}:subnet/*",
+          "arn:${local.computed_aws_partition}:ec2:${var.region}:${local.aws_account_id}:security-group/*"
         ],
         "Condition" : {
           "StringEqualsIfExists" : {
-            "ec2:vpc" : "arn:${local.computed_aws_partition}:ec2:${var.region}:${var.aws_account_id}:vpc/${var.custom_vpc_id != null ? var.custom_vpc_id : module.vpc[0].vpc_id}"
+            "ec2:vpc" : "arn:${local.computed_aws_partition}:ec2:${var.region}:${local.aws_account_id}:vpc/${var.custom_vpc_id != null ? var.custom_vpc_id : module.vpc[0].vpc_id}"
           }
         }
       },
@@ -265,10 +265,10 @@ resource "aws_iam_role_policy" "cross_account" {
           "ec2:RevokeSecurityGroupEgress",
           "ec2:RevokeSecurityGroupIngress"
         ],
-        "Resource" : "arn:${local.computed_aws_partition}:ec2:${var.region}:${var.aws_account_id}:security-group/${var.custom_sg_id != null ? var.custom_sg_id : aws_security_group.sg[0].id}",
+        "Resource" : "arn:${local.computed_aws_partition}:ec2:${var.region}:${local.aws_account_id}:security-group/${var.custom_sg_id != null ? var.custom_sg_id : aws_security_group.sg[0].id}",
         "Condition" : {
           "StringEquals" : {
-            "ec2:vpc" : "arn:${local.computed_aws_partition}:ec2:${var.region}:${var.aws_account_id}:vpc/${var.custom_vpc_id != null ? var.custom_vpc_id : module.vpc[0].vpc_id}"
+            "ec2:vpc" : "arn:${local.computed_aws_partition}:ec2:${var.region}:${local.aws_account_id}:vpc/${var.custom_vpc_id != null ? var.custom_vpc_id : module.vpc[0].vpc_id}"
           }
         }
       }

@@ -21,7 +21,7 @@ variable "artifact_storage_bucket" {
     "sa-east-1"      = ["databricks-prod-artifacts-sa-east-1"]
     "us-east-1"      = ["databricks-prod-artifacts-us-east-1"]
     "us-east-2"      = ["databricks-prod-artifacts-us-east-2"]
-    "us-west-1"      = ["databricks-prod-artifacts-us-west-2"]
+    "us-west-1"      = ["databricks-prod-artifacts-us-west-1"]
     "us-west-2"      = ["databricks-prod-artifacts-us-west-2", "databricks-update-oregon"]
     "us-gov-west-1"  = ["databricks-prod-artifacts-us-gov-west-1"]
   }
@@ -34,9 +34,10 @@ variable "audit_log_delivery_exists" {
 }
 
 variable "aws_account_id" {
-  description = "ID of the AWS account."
+  description = "ID of the AWS account. Auto-detected from caller identity when not provided."
   type        = string
   sensitive   = true
+  default     = null
 }
 
 variable "aws_partition" {
@@ -96,6 +97,12 @@ variable "custom_workspace_vpce_id" {
 variable "databricks_account_id" {
   description = "ID of the Databricks account."
   type        = string
+}
+
+variable "databricks_auth_type" {
+  description = "Databricks authentication type: 'oauth-m2m' for service principal, 'databricks-cli' for CLI profile"
+  type        = string
+  default     = "oauth-m2m"
 }
 
 variable "databricks_gov_shard" {
@@ -612,6 +619,9 @@ variable "workspace_config" {
 
 # Combined locals block for all computed values
 locals {
+  # Auto-detect AWS account ID from caller identity when not explicitly provided
+  aws_account_id = coalesce(var.aws_account_id, data.aws_caller_identity.current.account_id)
+
   # Computed AWS partition based on region
   computed_aws_partition = var.aws_partition != null ? var.aws_partition : (
     var.region == "us-gov-west-1" ? "aws-us-gov" : "aws"

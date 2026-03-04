@@ -3,6 +3,31 @@ variable "databricks_account_id" {
   description = "(Required) The Databricks account ID target for account-level operations"
 }
 
+variable "databricks_auth_type" {
+  description = "Databricks authentication type: 'oauth-m2m' for service principal, 'databricks-cli' for CLI profile, 'azure-cli' for Azure identity"
+  type        = string
+  default     = "oauth-m2m"
+}
+
+variable "databricks_client_id" {
+  description = "Databricks service principal client ID (required for oauth-m2m auth type)"
+  type        = string
+  default     = ""
+}
+
+variable "databricks_client_secret" {
+  description = "Databricks service principal client secret (required for oauth-m2m auth type)"
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "databricks_profile" {
+  description = "Databricks CLI profile name (required for databricks-cli auth type)"
+  type        = string
+  default     = ""
+}
+
 variable "databricks_metastore_id" {
   type        = string
   default     = null
@@ -86,7 +111,7 @@ variable "hub_allowed_urls" {
 # ------------------------------------------------------------------
 # Workspace Variables
 variable "create_workspace_resource_group" {
-  type        = string
+  type        = bool
   description = "(Optional) Should a resource group be created for this workspace? If false, resource_group_name must be provided."
   default     = true
 }
@@ -280,4 +305,16 @@ variable "catalog_force_destroy" {
   type        = bool
   default     = false
   description = "Used to allow Terraform to force destroy the catalog. This is only used for testing SRA."
+}
+
+variable "uc_catalog_name" {
+  type        = string
+  description = "(Optional) Custom name for the workspace catalog. Defaults to resource_suffix."
+  default     = null
+}
+
+variable "uc_storage_name" {
+  type        = string
+  description = "(Optional) Custom storage account name for the catalog. Defaults to auto-generated."
+  default     = null
 }

@@ -13,6 +13,10 @@ use std::process::Stdio;
 /// Azure AD resource ID for Databricks - used to obtain tokens for account-level APIs
 const DATABRICKS_AZURE_RESOURCE_ID: &str = "2ff814a6-3304-4ab8-85cb-cd0e6f879c1d";
 
+const MSG_NO_METASTORE: &str = "No metastore found in region. A new one will be created.";
+const MSG_METASTORE_UNAVAILABLE: &str =
+    "Metastore detection unavailable. Any existing metastore will be auto-detected during deployment.";
+
 /// List Databricks CLI profiles for a given cloud.
 #[tauri::command]
 pub fn get_databricks_profiles(cloud: String) -> Vec<dependencies::DatabricksProfile> {
@@ -564,7 +568,7 @@ pub async fn check_uc_permissions(
                                     has_create_external_location: true,
                                     has_create_storage_credential: true,
                                     can_create_catalog: true,
-                                    message: "No metastore found in region. A new one will be created.".to_string(),
+                                    message: MSG_NO_METASTORE.to_string(),
                                 });
                             }
                         }
@@ -585,7 +589,7 @@ pub async fn check_uc_permissions(
             has_create_external_location: true,
             has_create_storage_credential: true,
             can_create_catalog: true,
-            message: "Metastore detection unavailable. Any existing metastore will be auto-detected during deployment.".to_string(),
+            message: MSG_METASTORE_UNAVAILABLE.to_string(),
         });
     }
 
@@ -658,7 +662,7 @@ pub async fn check_uc_permissions(
             has_create_external_location: true,
             has_create_storage_credential: true,
             can_create_catalog: true,
-            message: "No metastore found in region. A new one will be created.".to_string(),
+            message: MSG_NO_METASTORE.to_string(),
         });
     }
 
@@ -928,8 +932,7 @@ pub async fn check_uc_permissions(
                                 has_create_external_location: true,
                                 has_create_storage_credential: true,
                                 can_create_catalog: true,
-                                message: "No metastore found in region. A new one will be created."
-                                    .to_string(),
+                                message: MSG_NO_METASTORE.to_string(),
                             });
                         }
                     }
@@ -949,7 +952,7 @@ pub async fn check_uc_permissions(
             has_create_external_location: true,
             has_create_storage_credential: true,
             can_create_catalog: true,
-            message: "Metastore detection unavailable. Any existing metastore will be auto-detected during deployment.".to_string(),
+            message: MSG_METASTORE_UNAVAILABLE.to_string(),
         });
     }
 
@@ -1036,7 +1039,7 @@ pub async fn check_uc_permissions(
             has_create_external_location: true,
             has_create_storage_credential: true,
             can_create_catalog: true,
-            message: "No metastore found in region. A new one will be created.".to_string(),
+            message: MSG_NO_METASTORE.to_string(),
         });
     }
 
@@ -1175,7 +1178,7 @@ pub async fn check_uc_permissions(
             has_create_external_location: true,
             has_create_storage_credential: true,
             can_create_catalog: true,
-            message: "No metastore found in region. A new one will be created.".to_string(),
+            message: MSG_NO_METASTORE.to_string(),
         })
     }
 }

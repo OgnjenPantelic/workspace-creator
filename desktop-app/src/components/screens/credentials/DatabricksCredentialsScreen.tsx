@@ -147,9 +147,9 @@ export function DatabricksCredentialsScreen() {
 
       setValidatingCredentials(false);
       onContinue();
-    } catch (e: any) {
+    } catch (e: unknown) {
       setValidatingCredentials(false);
-      setError(`Invalid Databricks credentials: ${e}`);
+      setError(`Invalid Databricks credentials: ${String(e)}`);
     }
   };
 

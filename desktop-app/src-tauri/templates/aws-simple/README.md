@@ -5,18 +5,18 @@ Terraform template for deploying a Databricks workspace on AWS with customer-man
 ## What Gets Deployed
 
 - Databricks Workspace with BYOVPC
-- VPC with private/public subnets across AZs
+- VPC with private/public subnets across AZs (or use existing VPC)
 - Security Groups
 - NAT Gateways
-- IAM Roles and Policies
+- IAM Roles and Policies (cross-account credential)
 - S3 Root Storage Bucket (encrypted)
-- Unity Catalog resources (optional)
+- Unity Catalog resources (optional): metastore, catalog, storage credential, external location
 
 ## Prerequisites
 
 - Terraform CLI
 - AWS CLI (`aws configure` or SSO)
-- Databricks service principal with account admin privileges
+- Databricks account admin privileges (CLI profile or service principal)
 
 ## Usage
 
@@ -35,11 +35,19 @@ terraform apply -var-file="terraform.tfvars"
 | Variable | Description |
 |----------|-------------|
 | `databricks_account_id` | Databricks account ID |
-| `databricks_client_id` | Service principal client ID |
-| `databricks_client_secret` | Service principal secret |
+| `admin_user` | Admin user email to add to the workspace |
 | `prefix` | Resource name prefix |
 | `region` | AWS region |
-| `vpc_cidr` | VPC CIDR block |
+| `cidr_block` | VPC CIDR block |
+| `create_new_vpc` | Create a new VPC or use existing |
+| `existing_vpc_id` | Existing VPC ID (when `create_new_vpc` = false) |
+| `existing_subnet_ids` | Existing subnet IDs (when `create_new_vpc` = false) |
+| `existing_security_group_id` | Existing SG ID (when `create_new_vpc` = false) |
+| `create_unity_catalog` | Enable Unity Catalog provisioning |
+| `existing_metastore_id` | Existing metastore ID (skips metastore creation) |
+| `uc_catalog_name` | Unity Catalog catalog name |
+| `uc_storage_name` | Unity Catalog storage name |
+| `tags` | Resource tags |
 
 ## Security Notes
 

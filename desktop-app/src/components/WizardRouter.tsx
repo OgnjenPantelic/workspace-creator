@@ -27,8 +27,8 @@ const ALL_STEP_GROUPS = [
 
 function StepIndicator({ screen }: { screen: string }) {
   const { selectedTemplate } = useWizard();
-  const isSra = selectedTemplate?.id?.includes("sra") ?? false;
-  const stepGroups = isSra
+  const skipCatalog = selectedTemplate?.id === "gcp-sra";
+  const stepGroups = skipCatalog
     ? ALL_STEP_GROUPS.filter(g => g.label !== "Catalog")
     : ALL_STEP_GROUPS;
 

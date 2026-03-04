@@ -100,12 +100,12 @@ export const AssistantSetup: React.FC = () => {
         <div style={{ display: "flex", flexDirection: "column", gap: "16px", width: "100%" }}>
           <div style={{
             padding: "12px",
-            backgroundColor: "#f0f9ff",
+            backgroundColor: "rgba(78, 201, 176, 0.1)",
             borderRadius: "6px",
-            border: "1px solid #bae6fd",
+            border: "1px solid rgba(78, 201, 176, 0.3)",
             textAlign: "center"
           }}>
-            <p style={{ fontSize: "13px", color: "#0c4a6e", margin: 0 }}>
+            <p style={{ fontSize: "13px", color: "#4ec9b0", margin: 0 }}>
               ✓ Key already saved for this provider
             </p>
           </div>

@@ -5,17 +5,17 @@ Terraform template for deploying a Databricks workspace on Azure with secure net
 ## What Gets Deployed
 
 - Databricks Workspace with VNet injection
-- Virtual Network with private/public subnets
+- Virtual Network with private/public subnets (or use existing VNet)
 - Network Security Groups
 - NAT Gateway
-- Resource Group
-- Unity Catalog resources (optional)
+- Resource Group (or use existing)
+- Unity Catalog resources (optional): metastore, catalog, storage credential, external location
 
 ## Prerequisites
 
 - Terraform CLI
 - Azure CLI (`az login`)
-- Databricks service principal with account admin privileges
+- Databricks account admin privileges (CLI profile, service principal, or Azure CLI identity)
 
 ## Usage
 
@@ -34,12 +34,22 @@ terraform apply -var-file="terraform.tfvars"
 | Variable | Description |
 |----------|-------------|
 | `databricks_account_id` | Databricks account ID |
-| `databricks_client_id` | Service principal client ID |
-| `databricks_client_secret` | Service principal secret |
+| `tenant_id` | Azure AD tenant ID |
+| `azure_subscription_id` | Azure subscription ID |
 | `workspace_name` | Workspace name |
+| `admin_user` | Admin user email to add to the workspace |
 | `location` | Azure region |
 | `resource_group_name` | Resource group name |
-| `vnet_cidr` | VNet CIDR block |
+| `create_new_resource_group` | Create a new resource group or use existing |
+| `create_new_vnet` | Create a new VNet or use existing |
+| `cidr` | VNet CIDR block |
+| `workspace_sku` | Databricks workspace SKU (premium/trial) |
+| `create_unity_catalog` | Enable Unity Catalog provisioning |
+| `existing_metastore_id` | Existing metastore ID (skips metastore creation) |
+| `uc_catalog_name` | Unity Catalog catalog name |
+| `uc_storage_name` | Unity Catalog storage name |
+| `databricks_auth_type` | Auth type (profile, service-principal, or azure-cli) |
+| `tags` | Resource tags |
 
 ## Security Notes
 

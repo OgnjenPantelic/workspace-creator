@@ -1,6 +1,6 @@
 # Unity Catalog with Isolated GCS Storage
 # Creates a catalog with dedicated GCS bucket, storage credential, and external location
-# This provides workspace-isolated data storage (recommended for production)
+# This provides workspace-isolated data storage (recommended)
 
 # Only create resources if Unity Catalog is enabled
 locals {

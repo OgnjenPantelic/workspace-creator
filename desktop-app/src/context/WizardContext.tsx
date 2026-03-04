@@ -6,6 +6,7 @@ import {
   TerraformVariable,
   DeploymentStatus,
   CloudCredentials,
+  CloudPermissionCheck,
   AppScreen,
   UnityCatalogConfig,
   UCPermissionCheck,
@@ -25,7 +26,7 @@ import type {
   UseGcpAuthReturn,
   UseDeploymentReturn,
 } from "../hooks";
-import { validateAwsCredentials, validateAzureCredentials } from "../utils/cloudValidation";
+import { validateAwsCredentials, validateAzureCredentials, CloudValidationResult } from "../utils/cloudValidation";
 import { AzureAdminDialog } from "../components/ui/AzureAdminDialog";
 
 // ---------------------------------------------------------------------------
@@ -176,8 +177,8 @@ export function WizardProvider({ children }: { children: ReactNode }) {
     try {
       const tmpl = await invoke<Template[]>("get_templates");
       setTemplates(tmpl);
-    } catch {
-      // Templates load failed — UI will show empty state
+    } catch (e) {
+      console.warn("Failed to load templates:", e);
     }
   };
 
@@ -197,8 +198,8 @@ export function WizardProvider({ children }: { children: ReactNode }) {
     try {
       const deps = await invoke<Record<string, DependencyStatus>>("check_dependencies");
       setDependencies(deps);
-    } catch {
-      // Dependencies check failed — UI will show default state
+    } catch (e) {
+      console.warn("Failed to check dependencies:", e);
     }
   };
 
@@ -299,7 +300,6 @@ export function WizardProvider({ children }: { children: ReactNode }) {
         const defaults = initializeFormDefaults(vars, {
           azureUser: azure.account?.user,
           gcpAccount: gcp.validation?.account,
-          awsAccountId: aws.identity?.account,
         });
         const templateTagValue = template.id.replace(/-/g, "_");
         const defaultTag = { key: "databricks_deployer_template", value: templateTagValue };
@@ -405,31 +405,25 @@ export function WizardProvider({ children }: { children: ReactNode }) {
   };
 
   // -- Azure wrappers -------------------------------------------------------
+  const applyAzureAccount = async (account: NonNullable<Awaited<ReturnType<typeof azure.loadAccount>>>) => {
+    setCredentials((prev) => ({
+      ...prev,
+      azure_tenant_id: account.tenant_id,
+      azure_subscription_id: account.subscription_id,
+      azure_account_email: account.user,
+    }));
+    await azure.loadSubscriptions();
+  };
+
   const checkAzureAccount = async () => {
     const account = await azure.loadAccount();
-    if (account) {
-      setCredentials((prev) => ({
-        ...prev,
-        azure_tenant_id: account.tenant_id,
-        azure_subscription_id: account.subscription_id,
-        azure_account_email: account.user,
-      }));
-      await azure.loadSubscriptions();
-    }
+    if (account) await applyAzureAccount(account);
   };
 
   const handleAzureLogin = async () => {
     await azure.handleAzureLogin();
     const account = await azure.loadAccount();
-    if (account) {
-      setCredentials((prev) => ({
-        ...prev,
-        azure_tenant_id: account.tenant_id,
-        azure_subscription_id: account.subscription_id,
-        azure_account_email: account.user,
-      }));
-      await azure.loadSubscriptions();
-    }
+    if (account) await applyAzureAccount(account);
   };
 
   const handleAzureSubscriptionChange = async (subscriptionId: string) => {
@@ -470,6 +464,7 @@ export function WizardProvider({ children }: { children: ReactNode }) {
     setError(null);
     aws.setError(null);
     azure.setError(null);
+    gcp.setError(null);
     switch (screen) {
       case "cloud-selection":
         setScreen("welcome");
@@ -543,76 +538,61 @@ export function WizardProvider({ children }: { children: ReactNode }) {
   };
 
   // -- Cloud credential validation ------------------------------------------
-  const validateAndContinueFromAwsCredentials = async () => {
-    setAwsValidationAttempted(true);
-    aws.setError(null);
-    aws.setCheckingPermissions(true);
+  const validateAndContinueFromCloud = async (
+    cloudHook: { setError: (e: string | null) => void; setCheckingPermissions: (c: boolean) => void; setPermissionCheck: (p: CloudPermissionCheck | null) => void },
+    setAttempted: (v: boolean) => void,
+    validate: () => Promise<CloudValidationResult>,
+    onSuccess: () => void,
+  ) => {
+    setAttempted(true);
+    cloudHook.setError(null);
+    cloudHook.setCheckingPermissions(true);
 
-    const result = await validateAwsCredentials({
-      authMode: aws.authMode,
-      identity: aws.identity,
-      credentials,
-    });
+    const result = await validate();
 
-    aws.setCheckingPermissions(false);
+    cloudHook.setCheckingPermissions(false);
 
     if (result.error) {
-      aws.setError(result.error);
+      cloudHook.setError(result.error);
       return;
     }
 
     if (result.permissionWarning && result.permissionCheck) {
-      aws.setPermissionCheck(result.permissionCheck);
+      cloudHook.setPermissionCheck(result.permissionCheck);
       setShowPermissionWarning(true);
       setPermissionWarningAcknowledged(false);
       return;
     }
 
     if (result.permissionCheck) {
-      aws.setPermissionCheck(result.permissionCheck);
+      cloudHook.setPermissionCheck(result.permissionCheck);
     }
 
-    setScreen("databricks-credentials");
+    onSuccess();
   };
 
-  const validateAndContinueFromAzureCredentials = async () => {
-    setAzureValidationAttempted(true);
-    azure.setError(null);
-    azure.setCheckingPermissions(true);
+  const validateAndContinueFromAwsCredentials = () =>
+    validateAndContinueFromCloud(
+      aws,
+      setAwsValidationAttempted,
+      () => validateAwsCredentials({ authMode: aws.authMode, identity: aws.identity, credentials }),
+      () => setScreen("databricks-credentials"),
+    );
 
-    const result = await validateAzureCredentials({
-      authMode: azure.authMode,
-      account: azure.account,
-      credentials,
-    });
-
-    azure.setCheckingPermissions(false);
-
-    if (result.error) {
-      azure.setError(result.error);
-      return;
-    }
-
-    if (result.permissionWarning && result.permissionCheck) {
-      azure.setPermissionCheck(result.permissionCheck);
-      setShowPermissionWarning(true);
-      setPermissionWarningAcknowledged(false);
-      return;
-    }
-
-    if (result.permissionCheck) {
-      azure.setPermissionCheck(result.permissionCheck);
-    }
-
-    // Only show Azure Admin dialog in CLI mode (user has already authenticated via Azure CLI)
-    if (azure.authMode === "cli" && credentials.azure_account_email) {
-      setShowAzureAdminDialog(true);
-    } else {
-      // Service principal mode or no email → skip dialog
-      setCredentials((prev) => ({ ...prev, azure_databricks_use_identity: false }));
-      setScreen("databricks-credentials");
-    }
-  };
+  const validateAndContinueFromAzureCredentials = () =>
+    validateAndContinueFromCloud(
+      azure,
+      setAzureValidationAttempted,
+      () => validateAzureCredentials({ authMode: azure.authMode, account: azure.account, credentials }),
+      () => {
+        if (azure.authMode === "cli" && credentials.azure_account_email) {
+          setShowAzureAdminDialog(true);
+        } else {
+          setCredentials((prev) => ({ ...prev, azure_databricks_use_identity: false }));
+          setScreen("databricks-credentials");
+        }
+      },
+    );
 
   const handleAzureAdminDialogYes = () => {
     setShowAzureAdminDialog(false);

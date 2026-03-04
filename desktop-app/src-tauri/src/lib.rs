@@ -1,4 +1,5 @@
 mod commands;
+mod crypto;
 mod dependencies;
 mod errors;
 mod terraform;

@@ -130,12 +130,12 @@ data "aws_iam_policy_document" "s3_vpc_endpoint_policy" {
     condition {
       test     = "StringEquals"
       variable = "aws:PrincipalAccount"
-      values   = [var.aws_account_id]
+      values   = [local.aws_account_id]
     }
     condition {
       test     = "StringEquals"
       variable = "s3:ResourceAccount"
-      values   = [var.aws_account_id]
+      values   = [local.aws_account_id]
     }
   }
 
@@ -266,7 +266,7 @@ data "aws_iam_policy_document" "sts_vpc_endpoint_policy" {
 
     principals {
       type        = "AWS"
-      identifiers = [var.aws_account_id]
+      identifiers = [local.aws_account_id]
     }
   }
 

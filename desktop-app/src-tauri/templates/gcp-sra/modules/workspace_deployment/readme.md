@@ -1,5 +1,5 @@
 ---
-page_title: "Workspace Deployment GCP SRA Modue"
+page_title: "Workspace Deployment GCP SRA Module"
 ---
 
 # Module to deploy a Databricks workspace 
@@ -46,5 +46,13 @@ This module uses the following variables in configurations:
 - `use_existing_cmek` - flag ("true" or "false") allowing for either the mode where you provide the resource ID to your CMEK resource, or let the module create a new one by providing key_name and keyring_name
 - `key_name` & `keyring_name` - name to be given to the CMEK used by Databricks for encryption. Not useful if bringing an existing `cmek_resource_id`
 - `cmek_resource_id` - ID to your existing CMEK. Only needed if use_existing_cmek = true
-
-
+- `use_psc` - Flag to enable Private Service Connect (PSC) for the workspace
+- `use_existing_databricks_vpc_eps` - Flag to use existing Databricks VPC Endpoints for PSC
+- `existing_databricks_vpc_ep_workspace` - Existing Databricks VPC endpoint ID for workspace (when `use_existing_databricks_vpc_eps` = true)
+- `existing_databricks_vpc_ep_relay` - Existing Databricks VPC endpoint ID for relay (when `use_existing_databricks_vpc_eps` = true)
+- `admin_user_email` - Email of the user to be granted admin access to the workspace
+- `create_admin_user` - Flag to create the admin user in the workspace
+- `can_create_workspaces` - Flag to control workspace creation (used for timeout control)
+- `regional_metastore_id` - ID of the regional metastore to assign to the workspace
+- `provision_regional_metastore` - Flag to provision a regional metastore
+- `databricks_google_service_account_key` - Base64 encoded service account key (optional, for key-based auth)

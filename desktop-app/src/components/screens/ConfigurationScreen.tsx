@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useMemo } from "react";
 import { 
   CLOUDS, 
   AWS_REGIONS, 
@@ -18,6 +18,7 @@ import { TerraformVariable } from "../../types";
 import { groupVariablesBySection, formatVariableName } from "../../utils/variables";
 import { computeSubnets, computeAwsSubnets, computeAwsSraSubnets, cidrsOverlap, parseCidr, getUsableNodes } from "../../utils/cidr";
 import { useWizard } from "../../hooks/useWizard";
+import { usePersistedCollapse } from "../../hooks/usePersistedCollapse";
 
 const KNOWN_BOOLEANS = new Set([
   "create_new_vpc",
@@ -35,7 +36,10 @@ const KNOWN_BOOLEANS = new Set([
 
 const COLLAPSIBLE_SECTIONS = new Set([
   "Advanced: Network Configuration",
-  "Security Group Egress Ports",
+  "Hub Infrastructure",
+  "Workspace Network",
+  "Firewall Rules",
+  "Encryption",
   "Security & Compliance",
   "Metastore & Catalog",
   "Optional Settings",
@@ -57,28 +61,20 @@ export function ConfigurationScreen() {
   } = useWizard();
   const azureResourceGroups = azure.resourceGroups;
   const azureVnets = azure.vnets;
-  const loadCollapseState = (key: string, def: boolean) => {
-    try { const v = localStorage.getItem(`cfg_${key}`); return v !== null ? v === "true" : def; } catch { return def; }
-  };
-  const persistCollapse = (key: string, val: boolean) => {
-    try { localStorage.setItem(`cfg_${key}`, String(val)); } catch { /* noop */ }
-  };
-  const [showTags, _setShowTags] = useState(() => loadCollapseState("tags", false));
-  const [showSecurity, _setShowSecurity] = useState(() => loadCollapseState("security", false));
-  const [showMetastore, _setShowMetastore] = useState(() => loadCollapseState("metastore", false));
-  const [showOptional, _setShowOptional] = useState(() => loadCollapseState("optional", false));
-  const [showOther, _setShowOther] = useState(() => loadCollapseState("other", false));
-  const [showSgPorts, _setShowSgPorts] = useState(() => loadCollapseState("sgPorts", false));
-  const setShowTags = (v: boolean) => { _setShowTags(v); persistCollapse("tags", v); };
-  const setShowSecurity = (v: boolean) => { _setShowSecurity(v); persistCollapse("security", v); };
-  const setShowMetastore = (v: boolean) => { _setShowMetastore(v); persistCollapse("metastore", v); };
-  const setShowOptional = (v: boolean) => { _setShowOptional(v); persistCollapse("optional", v); };
-  const setShowOther = (v: boolean) => { _setShowOther(v); persistCollapse("other", v); };
-  const setShowSgPorts = (v: boolean) => { _setShowSgPorts(v); persistCollapse("sgPorts", v); };
+  const [showTags, setShowTags] = usePersistedCollapse("tags", false);
+  const [showSecurity, setShowSecurity] = usePersistedCollapse("security", false);
+  const [showMetastore, setShowMetastore] = usePersistedCollapse("metastore", false);
+  const [showOptional, setShowOptional] = usePersistedCollapse("optional", false);
+  const [showOther, setShowOther] = usePersistedCollapse("other", false);
+  const [showHub, setShowHub] = usePersistedCollapse("hub", false);
+  const [showWsNetwork, setShowWsNetwork] = usePersistedCollapse("wsNetwork", false);
+  const [showFirewall, setShowFirewall] = usePersistedCollapse("firewall", false);
+  const [showEncryption, setShowEncryption] = usePersistedCollapse("encryption", false);
   const createNewVpc = formValues["create_new_vpc"] !== false && formValues["create_new_vpc"] !== "false";
   const isSraTemplate = selectedTemplate?.id?.includes("sra") ?? false;
+  const skipsCatalogScreen = selectedTemplate?.id === "gcp-sra";
   const onContinue = () => {
-    if (isSraTemplate) {
+    if (skipsCatalogScreen) {
       startDeploymentWizard();
     } else {
       setScreen("unity-catalog-config");
@@ -86,7 +82,7 @@ export function ConfigurationScreen() {
   };
   const onBack = goBack;
   
-  const handleFormChange = (name: string, value: any) => {
+  const handleFormChange = (name: string, value: string | boolean | number) => {
     setFormValues((prev) => {
       const updated = { ...prev, [name]: value };
       // Auto-fill vnet_resource_group_name when resource_group_name changes
@@ -180,6 +176,22 @@ export function ConfigurationScreen() {
     return null;
   }, [selectedCloud, formValues["cidr"], azureVnets]);
 
+  const subnetOverlap = useMemo(() => {
+    if (selectedCloud !== CLOUDS.AZURE) return false;
+    const pub = formValues["subnet_public_cidr"];
+    const priv = formValues["subnet_private_cidr"];
+    if (!pub || !priv || !parseCidr(pub) || !parseCidr(priv)) return false;
+    return cidrsOverlap(pub, priv);
+  }, [selectedCloud, formValues["subnet_public_cidr"], formValues["subnet_private_cidr"]]);
+
+  const sraVnetOverlap = useMemo(() => {
+    if (selectedTemplate?.id !== "azure-sra") return false;
+    const hub = formValues["hub_vnet_cidr"];
+    const ws = formValues["workspace_vnet__cidr"];
+    if (!hub || !ws || !parseCidr(hub) || !parseCidr(ws)) return false;
+    return cidrsOverlap(hub, ws);
+  }, [selectedTemplate?.id, formValues["hub_vnet_cidr"], formValues["workspace_vnet__cidr"]]);
+
   // Field visibility and validation depend on cloud and network toggles:
   // - AWS: createNewVpc controls new VPC vs existing VPC fields
   // - Azure: create_new_vnet controls new VNet vs existing VNet fields
@@ -263,14 +275,6 @@ export function ConfigurationScreen() {
   }
   if (selectedCloud === CLOUDS.GCP && !isGcpSra) {
     conditionallyRequired.add("subnet_cidr");
-  }
-
-  // --- Metastore ID required when metastore_exists is true (all SRA templates) ---
-  if (isAwsSra || isAzureSra || isGcpSra) {
-    const metastoreExists = formValues["metastore_exists"] === true || formValues["metastore_exists"] === "true";
-    if (metastoreExists) {
-      conditionallyRequired.add("existing_metastore_id");
-    }
   }
 
   // --- AWS SRA conditionally required ---
@@ -416,6 +420,42 @@ export function ConfigurationScreen() {
       }
     }
 
+    const storageVal = formValues["root_storage_name"];
+    if (storageVal && typeof storageVal === "string") {
+      if (!/^[a-z0-9]+$/.test(storageVal)) {
+        fieldErrors["root_storage_name"] = "Only lowercase letters and numbers allowed (no hyphens or special characters).";
+      } else if (storageVal.length < 3 || storageVal.length > 24) {
+        fieldErrors["root_storage_name"] = "Must be between 3 and 24 characters.";
+      }
+    }
+
+    const wsName = formValues["workspace_name"];
+    if (wsName && typeof wsName === "string") {
+      if (!/^[a-z0-9][a-z0-9-]*[a-z0-9]$|^[a-z0-9]$/.test(wsName)) {
+        fieldErrors["workspace_name"] = "Must start and end with a letter or number, contain only lowercase letters, numbers, and hyphens";
+      } else if (wsName.length < 3 || wsName.length > 45) {
+        fieldErrors["workspace_name"] = "Must be between 3 and 45 characters";
+      } else if (/--/.test(wsName)) {
+        fieldErrors["workspace_name"] = "Cannot contain consecutive hyphens";
+      }
+    }
+
+    const resPrefixVal = formValues["resource_prefix"];
+    if (resPrefixVal && typeof resPrefixVal === "string") {
+      if (!/^[a-z0-9.\-]+$/.test(resPrefixVal)) {
+        fieldErrors["resource_prefix"] = "Only lowercase letters, numbers, hyphens, and dots allowed.";
+      } else if (resPrefixVal.length > 26) {
+        fieldErrors["resource_prefix"] = "Must be 26 characters or fewer.";
+      }
+    }
+
+    const adminEmail = formValues["admin_user"];
+    if (adminEmail && typeof adminEmail === "string") {
+      if (!/^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$/.test(adminEmail)) {
+        fieldErrors["admin_user"] = "Must be a valid email address.";
+      }
+    }
+
     const allMissing = [
       ...missingFields.map(v => v.name),
       ...conditionalMissing,
@@ -429,11 +469,15 @@ export function ConfigurationScreen() {
     };
   }, [variables, formValues, hiddenFields, conditionallyRequired]);
 
+  const sections = useMemo(
+    () => groupVariablesBySection(variables, selectedTemplate?.id),
+    [variables, selectedTemplate?.id],
+  );
+
   const sectionErrorCounts = useMemo(() => {
     if (!formSubmitAttempted) return {};
     const counts: Record<string, number> = {};
-    const secs = groupVariablesBySection(variables, selectedTemplate?.id);
-    for (const [secName, secVars] of Object.entries(secs)) {
+    for (const [secName, secVars] of Object.entries(sections)) {
       let count = 0;
       for (const v of secVars) {
         if (hiddenFields.has(v.name)) continue;
@@ -449,7 +493,7 @@ export function ConfigurationScreen() {
       if (count > 0) counts[secName] = count;
     }
     return counts;
-  }, [formSubmitAttempted, variables, hiddenFields, formValidation, formValues, allRequiredFields]);
+  }, [formSubmitAttempted, sections, hiddenFields, formValidation, formValues, allRequiredFields]);
 
   const scrollToFirstError = () => {
     setTimeout(() => {
@@ -466,14 +510,15 @@ export function ConfigurationScreen() {
     );
   }
 
-  const sections = groupVariablesBySection(variables, selectedTemplate?.id);
-
   const isBoolField = (v: TerraformVariable) =>
     v.var_type.includes("bool") || KNOWN_BOOLEANS.has(v.name);
 
   const sectionToggle: Record<string, [boolean, (v: boolean) => void]> = {
     "Advanced: Network Configuration": [showAdvanced, setShowAdvanced],
-    "Security Group Egress Ports": [showSgPorts, setShowSgPorts],
+    "Hub Infrastructure": [showHub, setShowHub],
+    "Workspace Network": [showWsNetwork, setShowWsNetwork],
+    "Firewall Rules": [showFirewall, setShowFirewall],
+    "Encryption": [showEncryption, setShowEncryption],
     "Security & Compliance": [showSecurity, setShowSecurity],
     "Metastore & Catalog": [showMetastore, setShowMetastore],
     "Optional Settings": [showOptional, setShowOptional],
@@ -482,8 +527,13 @@ export function ConfigurationScreen() {
   };
 
   const sectionSubtitles: Record<string, string> = {
-    "Advanced: Network Configuration": "Network settings have sensible defaults. Modify only if you have specific requirements.",
-    "Security Group Egress Ports": "Pre-filled with Databricks-required ports. Rarely needs changes.",
+    "Advanced: Network Configuration": selectedCloud === CLOUDS.AZURE && !isSraTemplate
+      ? "VNet and subnet configuration. Defaults are pre-filled — review if you have specific networking requirements."
+      : "Network settings have sensible defaults. Modify only if you have specific requirements.",
+    "Hub Infrastructure": "Hub VNet, firewall, and CMK infrastructure. Disable to bring your own hub resources.",
+    "Workspace Network": "Workspace VNet and resource group configuration.",
+    "Firewall Rules": "Control which domains workspaces can access through the firewall.",
+    "Encryption": "Customer-managed key (CMK) encryption for managed disks and services.",
     "Security & Compliance": "Security profiles, encryption, and compliance settings.",
     "Metastore & Catalog": "Configure Unity Catalog metastore and workspace catalog.",
     "Optional Settings": "These settings have sensible defaults. Expand to customize.",
@@ -570,6 +620,20 @@ export function ConfigurationScreen() {
         />
       )}
       <div className="help-text">{sf.description}</div>
+      {sf.key === "workspace_vnet__cidr" && (() => {
+        const val = formValues[sf.key];
+        if (!val || typeof val !== "string") return null;
+        const p = parseCidr(val);
+        if (!p) return null;
+        if (p.prefixLen < 16 || p.prefixLen > 24)
+          return <div className="help-text" style={{ color: "#ffb347" }}>⚠ Workspace VNet prefix /{p.prefixLen} is outside the recommended /16–/24 range.</div>;
+        return null;
+      })()}
+      {sf.key === "workspace_vnet__cidr" && sraVnetOverlap && (
+        <div className="help-text" style={{ color: "#ffb347" }}>
+          ⚠ Workspace VNet CIDR overlaps with the Hub VNet CIDR. They must be non-overlapping ranges.
+        </div>
+      )}
     </div>
   );};
 
@@ -766,6 +830,19 @@ export function ConfigurationScreen() {
               className={formSubmitAttempted && formValidation.missingFields.includes(variable.name) ? "input-error" : ""}
             />
           </>
+        ) : variable.name === "existing_resource_group_name" && azureResourceGroups.length > 0 ? (
+          <select
+            value={azureResourceGroups.some(rg => rg.name === formValues[variable.name]) ? formValues[variable.name] : ""}
+            onChange={(e) => handleFormChange(variable.name, e.target.value)}
+            className={formSubmitAttempted && formValidation.missingFields.includes(variable.name) ? "input-error" : ""}
+          >
+            <option value="">Select an existing resource group</option>
+            {azureResourceGroups.map((rg) => (
+              <option key={rg.name} value={rg.name}>
+                {rg.name} ({rg.location})
+              </option>
+            ))}
+          </select>
         ) : (variable.name === "allowed_fqdns" || variable.name === "hub_allowed_urls") && FQDN_GROUPS[variable.name] ? (() => {
           const groups = FQDN_GROUPS[variable.name];
           const currentUrls: string[] = (() => {
@@ -827,6 +904,21 @@ export function ConfigurationScreen() {
                   ? "If SAT is enabled, Azure Management and Python Packages are required."
                   : "If SAT runs on serverless, both groups are required."}
               </div>
+              {(() => {
+                const satEnabled = formValues["sat__enabled"] === true || formValues["sat__enabled"] === "true";
+                if (!satEnabled) return null;
+                const runOnServerless = formValues["sat__run_on_serverless"] === true || formValues["sat__run_on_serverless"] === "true";
+                const relevantField = runOnServerless ? "hub_allowed_urls" : "allowed_fqdns";
+                if (variable.name !== relevantField) return null;
+                const requiredGroups = groups.filter(g => g.id === "azure_mgmt" || g.id === "python");
+                const missing = requiredGroups.filter(g => !isGroupChecked(g));
+                if (missing.length === 0) return null;
+                return (
+                  <div className="help-text" style={{ color: "#ffb347", marginTop: "4px" }}>
+                    ⚠ SAT is enabled — missing required FQDN groups: {missing.map(g => g.label).join(", ")}. Deployment will fail without these.
+                  </div>
+                );
+              })()}
               <div style={{ marginTop: "8px" }}>
                 <div style={{ fontSize: "0.85em", color: "#aaa", marginBottom: "6px" }}>Additional URLs</div>
                 {customUrls.map((url, idx) => (
@@ -942,6 +1034,16 @@ export function ConfigurationScreen() {
             ⚠ This range overlaps with existing VNet &quot;{vnetOverlap.vnetName}&quot; ({vnetOverlap.cidr}) in {vnetOverlap.resourceGroup}
           </div>
         )}
+        {(variable.name === "subnet_public_cidr" || variable.name === "subnet_private_cidr") && subnetOverlap && (
+          <div className="help-text" style={{ color: "#ffb347" }}>
+            ⚠ Public and private subnet CIDRs overlap. They must be non-overlapping ranges within the VNet.
+          </div>
+        )}
+        {variable.name === "hub_vnet_cidr" && sraVnetOverlap && (
+          <div className="help-text" style={{ color: "#ffb347" }}>
+            ⚠ Hub VNet CIDR overlaps with the Workspace VNet CIDR. They must be non-overlapping ranges.
+          </div>
+        )}
         {(() => {
           const val = formValues[variable.name];
           if (!val || typeof val !== "string") return null;
@@ -956,6 +1058,8 @@ export function ConfigurationScreen() {
             warn = `⚠ VNet prefix /${p.prefixLen} is outside the recommended /16–/24 range.`;
           else if ((variable.name === "subnet_public_cidr" || variable.name === "subnet_private_cidr") && p.prefixLen > 26)
             warn = `⚠ Subnet /${p.prefixLen} is smaller than the Databricks recommended minimum of /26.`;
+          else if (variable.name === "hub_vnet_cidr" && (p.prefixLen < 16 || p.prefixLen > 24))
+            warn = `⚠ Hub VNet prefix /${p.prefixLen} is outside the recommended /16–/24 range.`;
           else if (variable.name === "subnet_cidr" && (p.prefixLen < 16 || p.prefixLen > 26))
             warn = `⚠ Subnet prefix /${p.prefixLen} is outside the recommended /16–/26 range. Databricks recommends /19–/25 for optimal sizing.`;
           if (!warn) return null;
@@ -1168,7 +1272,7 @@ export function ConfigurationScreen() {
                 Preparing...
               </>
             ) : (
-              isSraTemplate ? "Create Workspace →" : "Continue →"
+              skipsCatalogScreen ? "Create Workspace →" : "Continue →"
             )}
           </button>
           {formSubmitAttempted && !formValidation.isValid && (

@@ -54,28 +54,52 @@ All templates also require **Admin Email** — the email of the workspace admin 
 
 ## AWS Standard BYOVPC
 Creates: VPC with subnets/NAT/security groups, S3 root bucket, cross-account IAM role, Databricks workspace.
+
+### Workspace
 - **Workspace Name** — prefix for all resource names (default: "databricks").
 - **Region** — AWS region (default: us-east-1).
-- **VPC CIDR** — address space for the new VPC (default: 10.4.0.0/16). Subnets are allocated automatically within this range.
+- **Admin Email** — email of workspace admin (must exist in Databricks account).
+
+### Advanced: Network Configuration
+- **Create New VPC** toggle (default: on) — when disabled, provide existing VPC details below.
+- **VPC CIDR** — address space for the new VPC (default: 10.4.0.0/16).
+- **Private Subnet 1 CIDR**, **Private Subnet 2 CIDR**, **Public Subnet CIDR** — auto-calculated from VPC CIDR if left empty.
+- **Existing VPC ID**, **Existing Subnet IDs**, **Existing Security Group ID** — fill all three to use an existing VPC instead of creating a new one.
+
+### Tags
 - **Resource Tags** — optional key-value pairs for cost tracking.
-- Advanced: **Existing VPC ID**, **Existing Subnet IDs**, **Existing Security Group ID** — fill these to use an existing VPC instead of creating a new one. All three are required together; leave all empty for auto-creation.
 
 ## Azure Standard VNet
 Creates: Resource group, Azure Storage Account, VNet with subnets, NSG, Databricks workspace.
+
+### Workspace
 - **Workspace Name** — name for the Databricks workspace.
-- **Region** — Azure region (default: eastus2).
+- **Region** — Azure region.
+- **Admin Email** — prepopulated from Azure identity.
 - **Resource Group** — new or existing Azure resource group.
 - **Storage Account Name** — root storage for the workspace. Must be globally unique, 3-24 characters, lowercase letters and numbers only.
 - **Pricing Tier** — premium or trial (default: premium). Premium is required for Unity Catalog.
-- **Resource Tags** — optional key-value pairs for cost tracking.
-- Network: **Create New VNet** toggle — when enabled, a new VNet is created with the specified CIDRs. When disabled, provide **Existing VNet Name** and **VNet Resource Group**.
+
+### Advanced: Network Configuration
+- **Create New VNet** toggle (default: on) — when disabled, provide VNet name and resource group.
 - **VNet CIDR** (default: 10.0.0.0/20), **Public Subnet CIDR** (default: 10.0.0.0/22), **Private Subnet CIDR** (default: 10.0.4.0/22) — subnet CIDRs must fit within the VNet address space.
+- **Existing VNet Name**, **VNet Resource Group** — required when not creating a new VNet.
+
+### Tags
+- **Resource Tags** — optional key-value pairs for cost tracking.
 
 ## GCP Standard BYOVPC
 Creates: VPC with Databricks subnet, GCS bucket, Databricks workspace.
+
+### Workspace
 - **Workspace Name** — name for the Databricks workspace.
 - **Region** — GCP region (default: us-central1).
+- **Admin Email** — prepopulated from GCP identity.
+
+### Advanced: Network Configuration
 - **Subnet CIDR** — address range for the Databricks subnet (default: 10.0.0.0/16).
+
+### Tags
 - **Resource Tags** — optional key-value labels for GCP resources.
 
 ## Standard vs SRA Templates
@@ -85,43 +109,112 @@ Each cloud has two template options:
 
 ## AWS Security Reference Architecture (SRA)
 Creates: VPC with PrivateLink endpoints (backend REST + SCC relay), CMK encryption (KMS keys for managed services and managed disks), cross-account IAM role, S3 root bucket with restrictive policy, Databricks workspace, network connectivity configuration (NCC), network policy, audit log delivery, Unity Catalog with isolated catalog. Optionally enables SAT and Compliance Security Profile.
+
+### Workspace
 - **Resource Prefix** — prefix for all resource names (1-26 chars, lowercase letters, digits, hyphens, dots only).
 - **Region** — AWS region (validated list including GovCloud us-gov-west-1).
+- **Admin Email** — email of workspace admin (must exist in Databricks account).
+- **AWS Account ID** — auto-populated from AWS credentials.
+
+### Advanced: Network Configuration
 - **Network Configuration** — `custom` (bring your own VPC) or `isolated` (creates a new VPC with full isolation).
-- **VPC CIDR** — address space for the new VPC (when using isolated network configuration).
-- **Private Subnet CIDRs** — CIDR list for private subnets.
-- **PrivateLink Subnet CIDRs** — CIDR list for PrivateLink endpoint subnets.
+- **VPC CIDR** — address space for the new VPC (default: 10.0.0.0/16, only when using isolated network).
+- **Private Subnet CIDRs** — two CIDR blocks for private subnets (Databricks compute nodes; defaults: 10.0.0.0/18, 10.0.64.0/18).
+- **PrivateLink Subnet CIDRs** — two CIDR blocks for PrivateLink endpoint subnets (defaults: 10.0.128.0/28, 10.0.128.16/28).
+- **Custom VPC ID**, **Custom Subnet IDs**, **Custom Security Group ID** — bring an existing VPC instead of creating new.
+- **Custom Relay VPC Endpoint ID**, **Custom Workspace VPC Endpoint ID** — bring existing PrivateLink endpoints.
+
+### Security Group Egress Ports
+- **Egress Ports** — list of allowed egress ports for the security group (defaults: 443, 3306, 6666, 8443-8451).
+
+### Security & Compliance
 - **Enable Compliance Security Profile** — toggle to enable the Databricks Compliance Security Profile.
+- **Compliance Standards** — list of standards to apply (e.g. HIPAA, PCI-DSS). Only visible when Compliance Security Profile is enabled.
 - **Enable Security Analysis Tool** — toggle to deploy SAT for continuous security monitoring.
-- **CMK Admin ARN** — ARN of the IAM principal that administers the KMS encryption keys. If omitted, defaults to the deploying identity.
-- Advanced: **Custom VPC ID**, **Custom Subnet IDs**, **Custom Security Group ID**, **Custom VPC Endpoint IDs** — bring an existing VPC and endpoints instead of creating new ones.
-- GovCloud: **Databricks Gov Shard** (civilian or dod) and **AWS Partition** for us-gov-west-1 deployments.
+- **CMK Admin ARN** — ARN of the IAM principal that administers KMS keys. If omitted, defaults to the deploying identity.
+
+### Metastore & Catalog
+- **Existing Metastore ID** — ID of an existing metastore to use (leave empty to auto-detect or create).
+- **Catalog Name** — name for the workspace catalog (leave empty to auto-generate from resource prefix).
+
+### Optional Settings
+- **Metastore Exists** — whether a metastore already exists in the region.
+- **Audit Log Delivery Exists** — whether audit log delivery is already configured.
+- **Deployment Name** — custom deployment name (must be enabled by Databricks representative).
+- GovCloud: **Databricks Gov Shard** (civilian or dod) and **AWS Partition** for us-gov-west-1 deployments. Regional endpoints, bucket names, and IAM ARNs are auto-computed based on shard type.
+
+### Tags
+- **Resource Tags** — optional key-value pairs for cost tracking.
 
 ## Azure Security Reference Architecture (SRA)
 Creates: Hub-spoke VNet architecture with hub workspace (webauth) and spoke workspace, Private Endpoints (DBFS, backend, webauth), Azure Firewall with FQDN filtering, Key Vault with CMK encryption (managed disks + managed services), NCC + network policy, Unity Catalog. Optionally enables SAT.
+
+### Workspace
 - **Resource Suffix** — suffix for naming workspace resources (e.g. "dbx-dev", "sra").
-- **Hub Resource Suffix** — suffix for naming hub resources (required when creating hub).
 - **Location** — Azure region.
-- **Hub VNet CIDR** — CIDR for the hub Virtual Network (required when creating hub).
-- **Workspace VNet** — CIDR and optional new_bits for the spoke network. The spoke VNet is peered with the hub.
-- **Create Hub** toggle — when enabled, creates the full hub infrastructure (firewall, Key Vault, Unity Catalog, webauth workspace). When disabled, provide existing hub VNet, NCC, network policy, and CMK IDs.
-- **CMK Enabled** toggle — enable customer-managed keys for workspace encryption using Azure Key Vault.
-- **Workspace Security Compliance** — compliance profile enablement, compliance standards list, automatic cluster update, enhanced security monitoring.
-- **SAT Configuration** — enable/disable Security Analysis Tool, schema name, catalog name, serverless toggle. When SAT is enabled, required FQDNs must be added to allowed list.
-- **Allowed FQDNs** — domains the spoke workspace can access through the firewall (e.g. python.org, pypi.org for SAT).
+
+### Hub Infrastructure
+- **Create Hub** toggle (default: on) — when enabled, creates hub infrastructure (firewall, Key Vault, Unity Catalog, webauth workspace). When disabled, provide existing hub VNet, NCC, network policy, and CMK IDs.
+- **Hub VNet CIDR** — CIDR for the hub Virtual Network (default: 10.100.0.0/20, required when creating hub).
+- **Hub Resource Suffix** — suffix for naming hub resources (required when creating hub).
+- **Existing Hub VNet** — existing hub VNet details (route table ID, VNet ID — required when not creating hub).
+- **Existing NCC ID**, **Existing NCC Name**, **Existing Network Policy ID** — required when not creating hub.
+
+### Workspace Network
+- **Create Workspace VNet** toggle (default: on) — when enabled, creates a new spoke VNet. When disabled, provide existing network configuration.
+- **Workspace VNet CIDR** — CIDR for the spoke network (default: 10.0.0.0/20). The spoke VNet is peered with the hub.
+- **Existing Workspace VNet** — existing network configuration (VNet ID, subnet IDs, NSG association IDs, DNS zone IDs — required when not creating VNet).
+- **Create Workspace Resource Group** toggle — when disabled, provide existing resource group name.
+
+### Firewall Rules
+- **Allowed FQDNs** — domains the spoke workspace can access through the firewall (e.g. python.org, pypi.org for SAT or package installation). By default no internet access is allowed.
+- **Hub Allowed URLs** — domains serverless compute in the hub workspace can access (needed for SAT on serverless).
+
+### Encryption
+- **CMK Enabled** toggle (default: on) — enable customer-managed keys for workspace encryption using Azure Key Vault.
+- **Existing CMK IDs** — Key Vault ID, managed disk key ID, managed services key ID (required when create_hub is false and CMK is enabled).
+
+### Security & Compliance
+- **Workspace Security Compliance** — compliance profile enablement, compliance standards list, automatic cluster update, enhanced security monitoring. If a compliance standard is selected, compliance security profile must be enabled.
+
+### Metastore & Catalog
+- **Databricks Metastore ID** — ID of an existing metastore (required when not creating hub).
+- **Catalog Name** — custom name for the workspace catalog. Defaults to the resource suffix.
+- **Catalog Storage Name** — custom storage account name for the catalog.
+
+### Optional Settings
+- **SAT Configuration** — enable/disable Security Analysis Tool, schema name, catalog name, serverless toggle. When SAT is enabled on classic compute, required FQDNs (management.azure.com, login.microsoftonline.com, python.org, pypi.org, etc.) must be added to allowed_fqdns. When running SAT on serverless, those FQDNs go in hub_allowed_urls instead.
+- **SAT Service Principal** — optional Client ID + Client Secret for SAT. If not provided, one is created automatically.
+
+### Tags
 - **Tags** — optional key-value pairs.
 
 ## GCP Security Reference Architecture (SRA)
 Creates: VPC with hardened firewall rules, optional PSC endpoints (workspace + relay), CMEK encryption (Cloud KMS key and keyring), IP access list restrictions, Private Access Settings, workspace with modular deployment. Optionally assigns existing metastore.
-- **Workspace Name** — name for the Databricks workspace.
+
+### Workspace
+- **Workspace Name** — name for the Databricks workspace (default: "my-databricks-workspace").
 - **Region** — GCP region.
-- **Nodes CIDR** — subnet CIDR for workspace nodes (default: 10.0.0.0/16). Cannot be changed after creation.
-- **Harden Network** toggle — enables strict VPC firewall rules that restrict egress traffic.
-- **Use PSC** toggle — enables Private Service Connect for fully private workspace connectivity. Requires PSC endpoint names and service attachment URIs.
-- **CMEK** options — **Key Name** and **Keyring Name** to create new Cloud KMS resources, or **Existing CMEK Resource ID** to reuse an existing key.
-- **IP Addresses** — list of CIDRs allowed to access the workspace (default: 0.0.0.0/0 = open).
+
+### Advanced: Network Configuration
 - **Use Existing VPC** toggle — reuse an existing VPC and subnet instead of creating new ones.
-- **Private Access Settings** — use existing PAS or create new ones for private connectivity.
+- **Existing VPC Name**, **Existing Subnet Name** — required when using existing VPC.
+- **Nodes CIDR** — subnet CIDR for workspace nodes (default: 10.0.0.0/16). Cannot be changed after creation.
+- **Use PSC** toggle — enables Private Service Connect for fully private workspace connectivity. When enabled, requires:
+  - **PSC Subnet Name** — name of the subnet for PSC endpoints (default: "databricks-pe-subnet").
+  - **PSC Subnet CIDR** — CIDR range for the PSC endpoint subnet (default: 10.3.0.0/24).
+  - **Workspace PE** and **Relay PE** — endpoint names for workspace and relay PSC connections.
+  - **Service Attachment URIs** — relay and workspace service attachment URIs (region-specific, see Databricks docs).
+  - **Use Existing PSC Endpoints** / **Use Existing Databricks VPC Endpoints** — toggles to reuse existing endpoints.
+- **Use Existing PAS** toggle with **Existing PAS ID** — for existing Private Access Settings.
+
+### Security & Compliance
+- **Harden Network** toggle (default: on) — enables strict VPC firewall rules that restrict egress traffic.
+- **Use Existing CMEK** toggle — when off, creates new Cloud KMS resources with **Key Name** (default: "sra-key") and **Keyring Name** (default: "sra-keyring"). When on, provide **CMEK Resource ID**.
+
+### Optional Settings
+- **IP Addresses** — list of CIDRs allowed to access the workspace (default: 0.0.0.0/0 = open).
+- **Account Console URL** — Databricks account console URL for your region (default: https://accounts.gcp.databricks.com).
 - **Regional Metastore ID** — ID of an existing Unity Catalog metastore to assign (leave empty to skip).
 
 # Unity Catalog
@@ -143,6 +236,21 @@ Unified governance for data and AI. When enabled:
 - **Failure**: Click **"Try Again"** to retry deployment, or **"Cleanup Resources"** to rollback and delete created resources.
 - **Rollback**: Click **"Delete Workspace & Resources"** to destroy the workspace. After rollback completes, click **"Start New Deployment"** to begin again.
 
+# Git Integration
+After a successful deployment, a **Git Integration** card appears on the Deployment screen. It allows users to version-control their deployment.
+
+## Initialize Git Repository
+Click **"Initialize Git Repository"** to create a git repo in the deployment folder. Before initializing, a preview modal shows the `terraform.tfvars.example` file that will be committed. Users can toggle **"Include actual values"** to include their real variable values in the example file, or leave it off to commit placeholder values only.
+
+## Push to GitHub
+After initializing, users can push to a remote GitHub repository:
+- **Authenticate with GitHub**: Click **"Sign in with GitHub"** to start the GitHub device code flow — a code is displayed to enter at github.com/login/device. The app polls until authentication completes.
+- **Create a new repo**: Click **"Create Repository on GitHub"** to create a new repo directly from the app. Choose a name, description, and public/private visibility.
+- **Push to existing repo**: Enter a remote URL and click **"Push"**.
+- Click **"Sign Out"** to disconnect from GitHub.
+
+The `.gitignore` excludes sensitive files (`.terraform/`, `terraform.tfstate`, `terraform.tfvars`). The `terraform.tfvars.example` shows which variables to set without exposing actual secrets.
+
 # Common Issues
 - "Terraform not found": Install from terraform.io or click **"Install"** button on Dependencies screen to auto-install.
 - "AWS SSO token expired": Click **"SSO Login"** button to re-authenticate (tokens expire after 8-12 hours).
@@ -152,3 +260,5 @@ Unified governance for data and AI. When enabled:
 - "Permission denied" during deploy: Check permission warnings from credential screens. Click **"Go Back & Edit"** to fix credentials.
 - "Resource already exists": Previous deployment left resources. Click **"Cleanup Resources"** or **"Delete Workspace & Resources"** to rollback, or clean up manually.
 - "Storage name already taken": S3 bucket and Azure Storage names must be globally unique. Click **"Go Back & Edit"** to change storage name.
+- "State lock" error: Another Terraform process may be running. Wait for it to finish or manually remove the lock file in the deployment directory.
+- "Provider authentication failed": Credentials may have expired. Go back to the credential screen and re-authenticate.

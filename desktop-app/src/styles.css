@@ -1074,11 +1074,6 @@ input[type="checkbox"] {
   border-width: 3px;
 }
 
-/* Small button variant */
-.btn-small {
-  padding: 6px 12px;
-  font-size: 12px;
-}
 
 /* Center actions */
 .deployment-status-card + .status-controls {
@@ -1389,8 +1384,6 @@ input[type="checkbox"] {
   margin-right: 8px;
 }
 
-.mt-24 { margin-top: 24px; }
-
 /* Copy button */
 .btn-copy {
   background: transparent;
@@ -1527,7 +1520,7 @@ input[type="checkbox"] {
 
 .dialog h3 {
   margin: 0 0 16px 0;
-  color: var(--text);
+  color: var(--text-primary);
 }
 
 .dialog p {
@@ -1572,7 +1565,7 @@ input[type="checkbox"] {
 
 .dialog-buttons button.secondary {
   background: transparent;
-  color: var(--text);
+  color: var(--text-primary);
   border: 1px solid var(--border);
 }
 
@@ -2485,19 +2478,6 @@ input[type="checkbox"] {
 .btn-link-danger:hover {
   color: #ff5252;
   text-decoration: underline;
-}
-
-.btn-danger {
-  background: #ff6b6b;
-  color: white;
-  padding: 8px 16px;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-}
-
-.btn-danger:hover {
-  background: #ff5252;
 }
 
 /* ── Screen transitions ──────────────────────────────────────────────── */

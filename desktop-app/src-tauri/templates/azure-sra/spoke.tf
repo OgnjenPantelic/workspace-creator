@@ -83,7 +83,8 @@ resource "databricks_disable_legacy_access_setting" "spoke" {
 module "spoke_catalog" {
   source = "./modules/catalog"
 
-  catalog_name         = module.spoke_workspace.resource_suffix
+  catalog_name         = coalesce(var.uc_catalog_name, module.spoke_workspace.resource_suffix)
+  storage_account_name = var.uc_storage_name
   is_default_namespace = true
 
   # Azure/Network parameters

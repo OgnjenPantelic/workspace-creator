@@ -1044,34 +1044,7 @@ pub async fn create_gcp_service_account(
             "Failed to grant custom role to service account: {}",
             stderr.trim()
         ));
-        }
-
-        // Step 2c: Briefly impersonate SA and run test-iam-permissions to verify IAM propagation
-        let _ = Command::new(&gcloud_cli)
-        .args([
-            "config",
-            "set",
-            "auth/impersonate_service_account",
-            &sa_email,
-        ])
-        .output();
-
-    std::thread::sleep(std::time::Duration::from_secs(5));
-
-    let critical_permissions = "resourcemanager.projects.get,iam.serviceAccounts.get,serviceusage.services.list,compute.networks.create,storage.buckets.create";
-    let _test_output = Command::new(&gcloud_cli)
-        .args([
-            "projects",
-            "test-iam-permissions",
-            &project_id,
-            "--permissions",
-            critical_permissions,
-        ])
-        .output();
-
-    let _ = Command::new(&gcloud_cli)
-        .args(["config", "unset", "auth/impersonate_service_account"])
-        .output();
+    }
 
     // Step 3: Grant Service Account Token Creator role to user
     let token_creator_output = Command::new(&gcloud_cli)
@@ -1182,7 +1155,6 @@ pub async fn create_gcp_service_account(
 pub async fn add_service_account_to_databricks(
     account_id: String,
     service_account_email: String,
-    _oauth_token: String,
 ) -> Result<String, String> {
     use std::process::Command;
 

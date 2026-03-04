@@ -3,11 +3,7 @@
 //! Supports GitHub Models (free), OpenAI, and Claude via API keys.
 //! The user provides their own API key, which is encrypted at rest using AES-256-GCM.
 
-use aes_gcm::{
-    aead::{Aead, KeyInit, OsRng},
-    Aes256Gcm, Nonce,
-};
-use base64::Engine;
+use aes_gcm::aead::OsRng;
 use rand::RngCore;
 use serde::{Deserialize, Serialize};
 use std::fs;
@@ -163,59 +159,16 @@ fn get_or_create_encryption_key(app: &AppHandle) -> Result<[u8; 32], String> {
     }
 }
 
-/// Encrypt an API key using AES-256-GCM.
 fn encrypt_key(plaintext: &str, enc_key: &[u8; 32]) -> Result<String, String> {
-    let cipher = Aes256Gcm::new(enc_key.into());
-    
-    // Generate a random 12-byte nonce
-    let mut nonce_bytes = [0u8; 12];
-    OsRng.fill_bytes(&mut nonce_bytes);
-    let nonce = Nonce::from_slice(&nonce_bytes);
-    
-    // Encrypt
-    let ciphertext = cipher
-        .encrypt(nonce, plaintext.as_bytes())
-        .map_err(|e| format!("Encryption failed: {}", e))?;
-    
-    // Concatenate nonce + ciphertext and encode as base64, with prefix
-    let mut combined = nonce_bytes.to_vec();
-    combined.extend_from_slice(&ciphertext);
-    let encoded = base64::engine::general_purpose::STANDARD.encode(&combined);
-    Ok(format!("enc:v1:{}", encoded))
+    crate::crypto::encrypt(plaintext, enc_key)
 }
 
-/// Decrypt an API key using AES-256-GCM.
 fn decrypt_key(encrypted: &str, enc_key: &[u8; 32]) -> Result<String, String> {
-    let cipher = Aes256Gcm::new(enc_key.into());
-    
-    // Strip the "enc:v1:" prefix
-    let encoded = encrypted.strip_prefix("enc:v1:")
-        .ok_or_else(|| "Invalid encrypted key format: missing prefix".to_string())?;
-    
-    // Decode from base64
-    let combined = base64::engine::general_purpose::STANDARD
-        .decode(encoded)
-        .map_err(|e| format!("Invalid encrypted key format: {}", e))?;
-    
-    if combined.len() < 12 {
-        return Err("Invalid encrypted key: too short".to_string());
-    }
-    
-    // Split nonce and ciphertext
-    let (nonce_bytes, ciphertext) = combined.split_at(12);
-    let nonce = Nonce::from_slice(nonce_bytes);
-    
-    // Decrypt
-    let plaintext = cipher
-        .decrypt(nonce, ciphertext)
-        .map_err(|e| format!("Decryption failed: {}", e))?;
-    
-    String::from_utf8(plaintext).map_err(|e| format!("Invalid UTF-8 in decrypted key: {}", e))
+    crate::crypto::decrypt(encrypted, enc_key)
 }
 
-/// Check if a string is an encrypted key (has the "enc:v1:" prefix).
 fn is_encrypted(value: &str) -> bool {
-    value.starts_with("enc:v1:")
+    crate::crypto::is_encrypted(value)
 }
 
 // ─── File I/O Helpers ───────────────────────────────────────────────────────
@@ -861,6 +814,7 @@ pub fn assistant_clear_history(app: AppHandle) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use base64::Engine;
 
     // ── parse_provider ──────────────────────────────────────────────────
 

@@ -179,9 +179,10 @@ pub fn get_azure_resource_groups() -> Result<Vec<AzureResourceGroup>, String> {
     let json: serde_json::Value = serde_json::from_str(&stdout)
         .map_err(|e| format!("Failed to parse resource groups: {}", e))?;
 
+    let empty = vec![];
     let groups: Vec<AzureResourceGroup> = json
         .as_array()
-        .unwrap_or(&vec![])
+        .unwrap_or(&empty)
         .iter()
         .map(|rg| AzureResourceGroup {
             name: rg["name"].as_str().unwrap_or("").to_string(),
@@ -286,9 +287,10 @@ pub async fn get_azure_resource_groups_sp(
         .await
         .map_err(|e| format!("Failed to parse resource groups response: {}", e))?;
 
+    let empty = vec![];
     let groups: Vec<AzureResourceGroup> = rg_json["value"]
         .as_array()
-        .unwrap_or(&vec![])
+        .unwrap_or(&empty)
         .iter()
         .map(|rg| AzureResourceGroup {
             name: rg["name"].as_str().unwrap_or("").to_string(),
@@ -330,9 +332,10 @@ pub fn get_azure_vnets() -> Result<Vec<AzureVnet>, String> {
     let json: serde_json::Value =
         serde_json::from_str(&stdout).map_err(|e| format!("Failed to parse VNets: {}", e))?;
 
+    let empty = vec![];
     let vnets: Vec<AzureVnet> = json
         .as_array()
-        .unwrap_or(&vec![])
+        .unwrap_or(&empty)
         .iter()
         .map(|v| AzureVnet {
             name: v["name"].as_str().unwrap_or("").to_string(),
@@ -340,7 +343,7 @@ pub fn get_azure_vnets() -> Result<Vec<AzureVnet>, String> {
             location: v["location"].as_str().unwrap_or("").to_string(),
             address_prefixes: v["addressSpace"]["addressPrefixes"]
                 .as_array()
-                .unwrap_or(&vec![])
+                .unwrap_or(&empty)
                 .iter()
                 .filter_map(|p| p.as_str().map(|s| s.to_string()))
                 .collect(),
@@ -442,9 +445,10 @@ pub async fn get_azure_vnets_sp(
         .await
         .map_err(|e| format!("Failed to parse VNets response: {}", e))?;
 
+    let empty = vec![];
     let vnets: Vec<AzureVnet> = vnet_json["value"]
         .as_array()
-        .unwrap_or(&vec![])
+        .unwrap_or(&empty)
         .iter()
         .map(|v| {
             let id_str = v["id"].as_str().unwrap_or("");
@@ -461,7 +465,7 @@ pub async fn get_azure_vnets_sp(
                 location: v["location"].as_str().unwrap_or("").to_string(),
                 address_prefixes: v["properties"]["addressSpace"]["addressPrefixes"]
                     .as_array()
-                    .unwrap_or(&vec![])
+                    .unwrap_or(&empty)
                     .iter()
                     .filter_map(|p| p.as_str().map(|s| s.to_string()))
                     .collect(),

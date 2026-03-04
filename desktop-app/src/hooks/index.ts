@@ -15,5 +15,6 @@ export { useGitHub } from "./useGitHub";
 export type { UseGitHubReturn } from "./useGitHub";
 export type { GitStep } from "./useGitHub";
 export { useWizard } from "./useWizard";
+export { usePersistedCollapse } from "./usePersistedCollapse";
 export { useAssistant } from "./useAssistant";
 export type { UseAssistantReturn } from "./useAssistant";

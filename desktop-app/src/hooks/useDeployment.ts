@@ -68,7 +68,7 @@ function reconstructObjects(values: Record<string, any>): Record<string, any> {
   return result;
 }
 
-const WORKSPACE_NAME_KEYS = ["prefix", "workspace_name", "databricks_workspace_name"];
+const WORKSPACE_NAME_KEYS = ["prefix", "workspace_name", "databricks_workspace_name", "resource_suffix", "resource_prefix"];
 
 function buildDeploymentName(template: Template, formValues: Record<string, any>): string {
   const workspaceName = WORKSPACE_NAME_KEYS
@@ -176,8 +176,8 @@ export function useDeployment(): UseDeploymentReturn {
             }
             onComplete?.(status.success);
           }
-        } catch {
-          // Continue polling
+        } catch (e) {
+          console.debug("Deployment status poll failed, retrying:", e);
         }
       }, POLLING.STATUS_INTERVAL);
     },
@@ -264,19 +264,40 @@ export function useDeployment(): UseDeploymentReturn {
 
       // Add Unity Catalog configuration if enabled
       if (ucConfig.enabled) {
-        values["create_unity_catalog"] = "true";
-        if (ucConfig.catalog_name) {
-          values["uc_catalog_name"] = ucConfig.catalog_name;
-        }
-        if (ucConfig.storage_name) {
-          values["uc_storage_name"] = ucConfig.storage_name;
+        if (template.id === "azure-sra") {
+          if (ucConfig.catalog_name) {
+            values["uc_catalog_name"] = ucConfig.catalog_name;
+          }
+          if (ucConfig.storage_name) {
+            values["uc_storage_name"] = ucConfig.storage_name;
+          }
+          if (ucConfig.metastore_id) {
+            values["databricks_metastore_id"] = ucConfig.metastore_id;
+          }
+        } else if (template.id === "aws-sra") {
+          if (ucConfig.catalog_name) {
+            values["uc_catalog_name"] = ucConfig.catalog_name;
+          }
+        } else {
+          values["create_unity_catalog"] = "true";
+          if (ucConfig.catalog_name) {
+            values["uc_catalog_name"] = ucConfig.catalog_name;
+          }
+          if (ucConfig.storage_name) {
+            values["uc_storage_name"] = ucConfig.storage_name;
+          }
         }
       }
 
       // Always pass existing_metastore_id if detected (regardless of UC catalog enabled)
       // This prevents Terraform from falling back to unreliable regex-based auto-detection
-      if (ucConfig.metastore_id) {
+      if (ucConfig.metastore_id && template.id !== "azure-sra") {
         values["existing_metastore_id"] = ucConfig.metastore_id;
+      }
+
+      // AWS SRA: set metastore_exists based on UC screen auto-detection
+      if (template.id === "aws-sra") {
+        values["metastore_exists"] = !!ucConfig.metastore_id;
       }
 
       // Reuse existing deployment if available (for retry), otherwise create new

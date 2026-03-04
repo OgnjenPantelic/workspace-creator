@@ -1,10 +1,10 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useWizard } from "../../hooks/useWizard";
 
 export function UnityCatalogConfigScreen() {
   const ctx = useWizard();
   const {
-    selectedCloud, formValues,
+    selectedCloud, selectedTemplate, formValues,
     ucConfig, setUcConfig,
     ucPermissionCheck,
     ucPermissionAcknowledged, setUcPermissionAcknowledged,
@@ -16,11 +16,37 @@ export function UnityCatalogConfigScreen() {
   } = ctx;
   const region = formValues.region || formValues.location || formValues.google_region || "";
   const workspaceName = formValues.workspace_name || formValues.databricks_workspace_name || formValues.prefix || "workspace";
+  const isAzureSra = selectedTemplate?.id === "azure-sra";
+  const isAwsSra = selectedTemplate?.id === "aws-sra";
+  const isSraAlwaysCatalog = isAzureSra || isAwsSra;
+  const sraCreateHub = isAzureSra && (formValues.create_hub === true || formValues.create_hub === "true");
+
+  // SRA: auto-enable UC config and pre-fill on mount
+  useEffect(() => {
+    if (!isSraAlwaysCatalog) return;
+    setUcConfig(prev => {
+      if (prev.enabled && prev.catalog_name && prev.storage_name) return prev;
+      const nameSource = formValues.resource_suffix || formValues.resource_prefix || "";
+      const catalogName = nameSource
+        ? nameSource.toLowerCase().replace(/[^a-z0-9_]/g, "")
+        : "catalog";
+      return {
+        ...prev,
+        enabled: true,
+        catalog_name: prev.catalog_name || catalogName,
+        storage_name: prev.storage_name || generateStorageName(),
+      };
+    });
+  }, [isSraAlwaysCatalog, formValues.resource_suffix, formValues.resource_prefix, setUcConfig, generateStorageName]);
   
   const metastoreExists = ucPermissionCheck?.metastore.exists;
   
-  const needsAcknowledgment = ucConfig.enabled && metastoreExists;
-  const canProceed = !ucConfig.enabled || (
+  const needsAcknowledgment = ucConfig.enabled && metastoreExists && !sraCreateHub;
+  const canProceed = isSraAlwaysCatalog ? (
+    ucConfig.catalog_name.trim() !== "" && 
+    ucConfig.storage_name.trim() !== "" &&
+    (sraCreateHub || !metastoreExists || ucPermissionAcknowledged)
+  ) : !ucConfig.enabled || (
     ucConfig.catalog_name.trim() !== "" && 
     ucConfig.storage_name.trim() !== "" &&
     (!needsAcknowledgment || ucPermissionAcknowledged)
@@ -83,7 +109,10 @@ export function UnityCatalogConfigScreen() {
                   <strong>No Metastore in Region</strong>
                 </div>
                 <div style={{ fontSize: "0.9em", color: "#aaa", marginLeft: "24px" }}>
-                  A new metastore will be created in {region}. As the creator, you'll be Metastore Admin.
+                  {sraCreateHub
+                    ? `The hub infrastructure will create a new metastore in ${region}. It will be automatically assigned to this workspace.`
+                    : `A new metastore will be created in ${region}. As the creator, you'll be Metastore Admin.`
+                  }
                 </div>
               </div>
             )}
@@ -105,31 +134,35 @@ export function UnityCatalogConfigScreen() {
 
       {/* Catalog Configuration */}
       <div className={`form-section ${selectedCloud}`}>
-        <h3 style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-          <label className="checkbox-label" style={{ margin: 0 }}>
-            <input
-              type="checkbox"
-              checked={ucConfig.enabled}
-              onChange={(e) => {
-                const enabled = e.target.checked;
-                const catalogNameFromWorkspace = workspaceName
-                  .toLowerCase()
-                  .replace(/-/g, "_")
-                  .replace(/[^a-z0-9_]/g, "") + "_catalog";
-                setUcConfig(prev => ({
-                  ...prev,
-                  enabled,
-                  catalog_name: enabled && !prev.catalog_name ? catalogNameFromWorkspace : prev.catalog_name,
-                  storage_name: enabled && !prev.storage_name ? generateStorageName() : prev.storage_name,
-                }));
-                if (!enabled) {
-                  setUcPermissionAcknowledged(false);
-                }
-              }}
-            />
-            Create a new Catalog for this workspace
-          </label>
-        </h3>
+        {isSraAlwaysCatalog ? (
+          <h3>Catalog Configuration</h3>
+        ) : (
+          <h3 style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+            <label className="checkbox-label" style={{ margin: 0 }}>
+              <input
+                type="checkbox"
+                checked={ucConfig.enabled}
+                onChange={(e) => {
+                  const enabled = e.target.checked;
+                  const catalogNameFromWorkspace = workspaceName
+                    .toLowerCase()
+                    .replace(/-/g, "_")
+                    .replace(/[^a-z0-9_]/g, "") + "_catalog";
+                  setUcConfig(prev => ({
+                    ...prev,
+                    enabled,
+                    catalog_name: enabled && !prev.catalog_name ? catalogNameFromWorkspace : prev.catalog_name,
+                    storage_name: enabled && !prev.storage_name ? generateStorageName() : prev.storage_name,
+                  }));
+                  if (!enabled) {
+                    setUcPermissionAcknowledged(false);
+                  }
+                }}
+              />
+              Create a new Catalog for this workspace
+            </label>
+          </h3>
+        )}
         
         {ucConfig.enabled && (
           <>
@@ -180,7 +213,7 @@ export function UnityCatalogConfigScreen() {
               <br />
               <span style={{ fontSize: "0.9em" }}>
                 This will create a dedicated {selectedCloud === "aws" ? "S3 bucket" : selectedCloud === "gcp" ? "GCS bucket" : "Azure Storage account"} for your catalog, 
-                providing workspace-isolated data storage (recommended for production).
+                providing workspace-isolated data storage (recommended).
               </span>
             </div>
 
@@ -297,7 +330,7 @@ export function UnityCatalogConfigScreen() {
           You may not have sufficient permissions. The workspace will be created, but catalog creation may fail.
         </p>
       )}
-      {!ucConfig.enabled && (
+      {!ucConfig.enabled && !isSraAlwaysCatalog && (
         <p style={{ marginTop: "12px", color: "var(--text-muted)", fontSize: "0.9em" }}>
           Catalog setup is optional. You can create catalogs later through the Databricks workspace.
         </p>

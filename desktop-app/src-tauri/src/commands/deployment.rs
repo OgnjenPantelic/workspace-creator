@@ -117,15 +117,20 @@ fn refresh_gcp_user_token() -> Option<String> {
 fn build_env_vars(credentials: &CloudCredentials) -> HashMap<String, String> {
     let mut env_vars = HashMap::new();
 
-    // AWS credentials
+    // AWS credentials — clear conflicting env vars to prevent inherited shell values from clashing
     if let Some(profile) = &credentials.aws_profile {
         if !profile.is_empty() {
             env_vars.insert("AWS_PROFILE".to_string(), profile.clone());
+            env_vars.insert("AWS_ACCESS_KEY_ID".to_string(), String::new());
+            env_vars.insert("AWS_SECRET_ACCESS_KEY".to_string(), String::new());
+            env_vars.insert("AWS_SESSION_TOKEN".to_string(), String::new());
         }
+    } else {
+        set_env_if_present(&mut env_vars, "AWS_ACCESS_KEY_ID", &credentials.aws_access_key_id);
+        set_env_if_present(&mut env_vars, "AWS_SECRET_ACCESS_KEY", &credentials.aws_secret_access_key);
+        set_env_if_present(&mut env_vars, "AWS_SESSION_TOKEN", &credentials.aws_session_token);
+        env_vars.insert("AWS_PROFILE".to_string(), String::new());
     }
-    set_env_if_present(&mut env_vars, "AWS_ACCESS_KEY_ID", &credentials.aws_access_key_id);
-    set_env_if_present(&mut env_vars, "AWS_SECRET_ACCESS_KEY", &credentials.aws_secret_access_key);
-    set_env_if_present(&mut env_vars, "AWS_SESSION_TOKEN", &credentials.aws_session_token);
     set_env_if_present(&mut env_vars, "AWS_DEFAULT_REGION", &credentials.aws_region);
 
     // Azure credentials
@@ -184,6 +189,7 @@ fn build_env_vars(credentials: &CloudCredentials) -> HashMap<String, String> {
 
     let is_azure = credentials.cloud.as_deref() == Some("azure");
 
+    // Databricks auth — clear conflicting env vars to prevent inherited shell values from clashing
     if is_gcp {
         env_vars.insert("DATABRICKS_CONFIG_FILE".to_string(), "/dev/null".to_string());
     } else if !is_azure {
@@ -193,6 +199,8 @@ fn build_env_vars(credentials: &CloudCredentials) -> HashMap<String, String> {
                 "DATABRICKS_CONFIG_PROFILE",
                 &credentials.databricks_profile,
             );
+            env_vars.insert("DATABRICKS_CLIENT_ID".to_string(), String::new());
+            env_vars.insert("DATABRICKS_CLIENT_SECRET".to_string(), String::new());
         } else {
             set_env_if_present(
                 &mut env_vars,
@@ -204,6 +212,7 @@ fn build_env_vars(credentials: &CloudCredentials) -> HashMap<String, String> {
                 "DATABRICKS_CLIENT_SECRET",
                 &credentials.databricks_client_secret,
             );
+            env_vars.insert("DATABRICKS_CONFIG_PROFILE".to_string(), String::new());
         }
     }
 
@@ -933,6 +942,9 @@ mod tests {
         };
         let env = build_env_vars(&creds);
         assert_eq!(env.get("AWS_PROFILE"), Some(&"my-profile".to_string()));
+        assert_eq!(env.get("AWS_ACCESS_KEY_ID"), Some(&String::new()));
+        assert_eq!(env.get("AWS_SECRET_ACCESS_KEY"), Some(&String::new()));
+        assert_eq!(env.get("AWS_SESSION_TOKEN"), Some(&String::new()));
     }
 
     #[test]
@@ -950,6 +962,7 @@ mod tests {
         assert_eq!(env.get("AWS_SECRET_ACCESS_KEY"), Some(&"SECRET".to_string()));
         assert_eq!(env.get("AWS_SESSION_TOKEN"), Some(&"TOKEN".to_string()));
         assert_eq!(env.get("AWS_DEFAULT_REGION"), Some(&"us-east-1".to_string()));
+        assert_eq!(env.get("AWS_PROFILE"), Some(&String::new()));
     }
 
     #[test]
@@ -1032,6 +1045,7 @@ mod tests {
         assert_eq!(env.get("DATABRICKS_ACCOUNT_ID"), Some(&"acc-id".to_string()));
         assert_eq!(env.get("DATABRICKS_CLIENT_ID"), Some(&"sp-id".to_string()));
         assert_eq!(env.get("DATABRICKS_CLIENT_SECRET"), Some(&"sp-secret".to_string()));
+        assert_eq!(env.get("DATABRICKS_CONFIG_PROFILE"), Some(&String::new()));
     }
 
     #[test]
@@ -1044,7 +1058,8 @@ mod tests {
         };
         let env = build_env_vars(&creds);
         assert_eq!(env.get("DATABRICKS_CONFIG_PROFILE"), Some(&"my-profile".to_string()));
-        assert!(!env.contains_key("DATABRICKS_CLIENT_ID"));
+        assert_eq!(env.get("DATABRICKS_CLIENT_ID"), Some(&String::new()));
+        assert_eq!(env.get("DATABRICKS_CLIENT_SECRET"), Some(&String::new()));
     }
 
     #[test]
@@ -1060,14 +1075,14 @@ mod tests {
         let env = build_env_vars(&creds);
         assert_eq!(env.get("DATABRICKS_CLIENT_ID"), Some(&"sp-id".to_string()));
         assert_eq!(env.get("DATABRICKS_CLIENT_SECRET"), Some(&"sp-secret".to_string()));
-        assert!(!env.contains_key("DATABRICKS_CONFIG_PROFILE"));
+        assert_eq!(env.get("DATABRICKS_CONFIG_PROFILE"), Some(&String::new()));
     }
 
     #[test]
     fn build_env_vars_empty_credentials() {
         let creds = CloudCredentials::default();
         let env = build_env_vars(&creds);
-        assert!(!env.contains_key("AWS_PROFILE"));
+        assert_eq!(env.get("AWS_PROFILE"), Some(&String::new()));
         assert!(!env.contains_key("ARM_TENANT_ID"));
     }
 

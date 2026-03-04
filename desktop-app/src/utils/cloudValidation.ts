@@ -54,8 +54,8 @@ export async function validateAwsCredentials(
     }
 
     return { proceed: true, permissionCheck: permCheck };
-  } catch (e: any) {
-    return { proceed: false, error: e?.toString() || "Credential validation failed" };
+  } catch (e: unknown) {
+    return { proceed: false, error: String(e) || "Credential validation failed" };
   }
 }
 
@@ -102,7 +102,7 @@ export async function validateAzureCredentials(
     }
 
     return { proceed: true, permissionCheck: permCheck };
-  } catch (e: any) {
-    return { proceed: false, error: e?.toString() || "Credential validation failed" };
+  } catch (e: unknown) {
+    return { proceed: false, error: String(e) || "Credential validation failed" };
   }
 }

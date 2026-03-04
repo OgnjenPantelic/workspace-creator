@@ -1,7 +1,7 @@
 # EXPLANATION: The customer-managed keys for workspace and managed services
 
 locals {
-  cmk_admin_value = var.cmk_admin_arn == null ? "arn:${local.computed_aws_partition}:iam::${var.aws_account_id}:root" : var.cmk_admin_arn
+  cmk_admin_value = var.cmk_admin_arn == null ? "arn:${local.computed_aws_partition}:iam::${local.aws_account_id}:root" : var.cmk_admin_arn
 }
 
 resource "aws_kms_key" "workspace_storage" {

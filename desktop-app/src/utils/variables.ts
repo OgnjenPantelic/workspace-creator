@@ -9,7 +9,7 @@ function isValidJson(s: string): boolean {
 /**
  * Canonical section order for the configuration form.
  */
-export const SECTION_ORDER = ["Workspace", "Advanced: Network Configuration", "Security Group Egress Ports", "Security & Compliance", "Metastore & Catalog", "Optional Settings", "Tags"];
+export const SECTION_ORDER = ["Workspace", "Hub Infrastructure", "Workspace Network", "Firewall Rules", "Encryption", "Advanced: Network Configuration", "Security & Compliance", "Metastore & Catalog", "Optional Settings", "Tags"];
 
 /**
  * Field display order within each section (lower number = displayed first).
@@ -25,39 +25,49 @@ const FIELD_ORDER: Record<string, number> = {
   location: 2,
   google_region: 2,
   admin_user: 3,
-  aws_account_id: 4,
   resource_group_name: 4,
   root_storage_name: 5,
   workspace_sku: 6,
   // Tags
   tags: 1,
-  // Advanced: Network - toggle first, CIDRs, then existing resources
-  create_new_vnet: 1,
+  // Hub Infrastructure (Azure SRA)
   create_hub: 1,
+  hub_vnet_cidr: 2,
+  hub_resource_suffix: 3,
+  existing_hub_vnet: 4,
+  existing_ncc_id: 5,
+  existing_ncc_name: 6,
+  existing_network_policy_id: 7,
+  // Workspace Network (Azure SRA)
+  create_workspace_vnet: 1,
+  workspace_vnet: 2,
+  existing_workspace_vnet: 3,
+  create_workspace_resource_group: 4,
+  existing_resource_group_name: 5,
+  // Firewall Rules (Azure SRA)
+  allowed_fqdns: 1,
+  hub_allowed_urls: 2,
+  // Encryption (Azure SRA)
+  cmk_enabled: 1,
+  existing_cmk_ids: 2,
+  // Advanced: Network - toggle first, CIDRs, then existing resources (non-SRA)
+  create_new_vnet: 1,
   network_configuration: 1,
-  create_workspace_vnet: 2,
-  create_workspace_resource_group: 3,
   create_new_vpc: 1,
   cidr_block: 4,
   private_subnet_1_cidr: 5,
   private_subnet_2_cidr: 6,
   public_subnet_cidr: 7,
   cidr: 4,
-  hub_vnet_cidr: 4,
   vpc_cidr_range: 4,
   subnet_cidr: 5,
   subnet_public_cidr: 5,
   subnet_private_cidr: 6,
   private_subnets_cidr: 5,
   privatelink_subnets_cidr: 6,
-  hub_resource_suffix: 7,
   vnet_name: 8,
   vnet_resource_group_name: 9,
-  existing_resource_group_name: 10,
   sg_egress_ports: 10,
-  allowed_fqdns: 11,
-  hub_allowed_urls: 12,
-  cmk_enabled: 13,
   existing_vpc_id: 20,
   existing_subnet_ids: 21,
   existing_security_group_id: 22,
@@ -67,8 +77,6 @@ const FIELD_ORDER: Record<string, number> = {
   custom_relay_vpce_id: 23,
   custom_workspace_vpce_id: 24,
   databricks_metastore_id: 25,
-  existing_ncc_id: 26,
-  existing_network_policy_id: 27,
   // GCP SRA: network
   nodes_ip_cidr_range: 3,
   use_existing_vpc: 1,
@@ -112,7 +120,6 @@ const FIELD_ORDER: Record<string, number> = {
   deployment_name: 3,
   ip_addresses: 4,
   account_console_url: 5,
-  existing_ncc_name: 27,
 };
 
 /**
@@ -123,7 +130,7 @@ export function groupVariablesBySection(
   variables: TerraformVariable[],
   templateId?: string
 ): Record<string, TerraformVariable[]> {
-  const isSra = templateId?.includes("sra");
+  const isGcpSra = templateId === "gcp-sra";
   const SRA_UC_FIELDS = ["existing_metastore_id", "uc_catalog_name"];
   const sectionMap: Record<string, string> = {
     // Workspace
@@ -139,7 +146,6 @@ export function groupVariablesBySection(
     resource_group_name: "Workspace",
     resource_prefix: "Workspace",
     resource_suffix: "Workspace",
-    aws_account_id: "Workspace",
 
     // Tags
     tags: "Tags",
@@ -164,11 +170,11 @@ export function groupVariablesBySection(
     subnet_cidr: "Advanced: Network Configuration",
     create_new_vnet: "Advanced: Network Configuration",
     security_group_ids: "Advanced: Network Configuration",
-    sg_egress_ports: "Security Group Egress Ports",
+    sg_egress_ports: "Advanced: Network Configuration",
     existing_vpc_id: "Advanced: Network Configuration",
     existing_subnet_ids: "Advanced: Network Configuration",
     existing_security_group_id: "Advanced: Network Configuration",
-    // SRA: Azure network fields
+    // SRA: Azure network fields (remapped per-template below for azure-sra)
     create_hub: "Advanced: Network Configuration",
     hub_vnet_cidr: "Advanced: Network Configuration",
     hub_resource_suffix: "Advanced: Network Configuration",
@@ -185,6 +191,7 @@ export function groupVariablesBySection(
     databricks_metastore_id: "Advanced: Network Configuration",
     existing_ncc_id: "Advanced: Network Configuration",
     existing_network_policy_id: "Advanced: Network Configuration",
+    existing_ncc_name: "Advanced: Network Configuration",
     // SRA: AWS network fields
     network_configuration: "Advanced: Network Configuration",
     privatelink_subnets_cidr: "Advanced: Network Configuration",
@@ -236,7 +243,6 @@ export function groupVariablesBySection(
     uc_catalog_name: "Metastore & Catalog",
 
     // Optional Settings
-    existing_ncc_name: "Advanced: Network Configuration",
     audit_log_delivery_exists: "Optional Settings",
     deployment_name: "Optional Settings",
     ip_addresses: "Optional Settings",
@@ -245,11 +251,37 @@ export function groupVariablesBySection(
     sat_service_principal: "Optional Settings",
   };
 
+  // Azure SRA: split the mega network section into focused sub-sections
+  if (templateId === "azure-sra") {
+    const azureSraOverrides: Record<string, string> = {
+      create_hub: "Hub Infrastructure",
+      hub_vnet_cidr: "Hub Infrastructure",
+      hub_resource_suffix: "Hub Infrastructure",
+      existing_hub_vnet: "Hub Infrastructure",
+      existing_ncc_id: "Hub Infrastructure",
+      existing_ncc_name: "Hub Infrastructure",
+      existing_network_policy_id: "Hub Infrastructure",
+
+      create_workspace_vnet: "Workspace Network",
+      workspace_vnet: "Workspace Network",
+      existing_workspace_vnet: "Workspace Network",
+      create_workspace_resource_group: "Workspace Network",
+      existing_resource_group_name: "Workspace Network",
+
+      allowed_fqdns: "Firewall Rules",
+      hub_allowed_urls: "Firewall Rules",
+
+      cmk_enabled: "Encryption",
+      existing_cmk_ids: "Encryption",
+    };
+    Object.assign(sectionMap, azureSraOverrides);
+  }
+
   // Build temporary map
   const tempSections: Record<string, TerraformVariable[]> = {};
   variables.forEach((v) => {
     const isExcluded = (EXCLUDE_VARIABLES as readonly string[]).includes(v.name);
-    if (isExcluded && !(isSra && SRA_UC_FIELDS.includes(v.name))) return;
+    if (isExcluded && !(isGcpSra && SRA_UC_FIELDS.includes(v.name))) return;
     const section = sectionMap[v.name] || "Other Configuration";
     if (!tempSections[section]) tempSections[section] = [];
     tempSections[section].push(v);
@@ -300,7 +332,6 @@ export function generateRandomSuffix(): string {
 interface FormDefaultsContext {
   azureUser?: string | null;
   gcpAccount?: string | null;
-  awsAccountId?: string | null;
 }
 
 /**
@@ -335,10 +366,10 @@ export function initializeFormDefaults(
         else if (v.name === "private_subnet_2_cidr") defaults[v.name] = awsSubnets.private2Cidr;
         else defaults[v.name] = awsSubnets.publicCidr;
       }
-    } else if (v.name === "location" || v.name === "google_region" || v.name === "region" || v.name === "workspace_sku") {
+    } else if (v.name === "location" || v.name === "google_region" || v.name === "region") {
       defaults[v.name] = "";
-    } else if (v.name === "aws_account_id" && context.awsAccountId) {
-      defaults[v.name] = context.awsAccountId;
+    } else if (v.name === "workspace_sku") {
+      defaults[v.name] = "premium";
     } else if (v.name === "admin_user" && context.azureUser) {
       defaults[v.name] = context.azureUser;
     } else if (v.name === "admin_user" && context.gcpAccount) {

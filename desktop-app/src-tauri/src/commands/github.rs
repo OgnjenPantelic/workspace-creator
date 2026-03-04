@@ -5,11 +5,7 @@
 //! creation for deployment directories.
 
 use super::{debug_log, get_deployments_dir, http_client, sanitize_deployment_name};
-use aes_gcm::{
-    aead::{Aead, KeyInit, OsRng},
-    Aes256Gcm, Nonce,
-};
-use base64::Engine;
+use aes_gcm::aead::OsRng;
 use rand::RngCore;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -288,44 +284,11 @@ fn get_or_create_github_key(app: &AppHandle) -> Result<[u8; 32], String> {
 }
 
 fn encrypt_token(plaintext: &str, enc_key: &[u8; 32]) -> Result<String, String> {
-    let cipher = Aes256Gcm::new(enc_key.into());
-    let mut nonce_bytes = [0u8; 12];
-    OsRng.fill_bytes(&mut nonce_bytes);
-    let nonce = Nonce::from_slice(&nonce_bytes);
-
-    let ciphertext = cipher
-        .encrypt(nonce, plaintext.as_bytes())
-        .map_err(|e| format!("Encryption failed: {}", e))?;
-
-    let mut combined = nonce_bytes.to_vec();
-    combined.extend_from_slice(&ciphertext);
-    let encoded = base64::engine::general_purpose::STANDARD.encode(&combined);
-    Ok(format!("enc:v1:{}", encoded))
+    crate::crypto::encrypt(plaintext, enc_key)
 }
 
 fn decrypt_token(encrypted: &str, enc_key: &[u8; 32]) -> Result<String, String> {
-    let cipher = Aes256Gcm::new(enc_key.into());
-
-    let encoded = encrypted
-        .strip_prefix("enc:v1:")
-        .ok_or_else(|| "Invalid encrypted token format".to_string())?;
-
-    let combined = base64::engine::general_purpose::STANDARD
-        .decode(encoded)
-        .map_err(|e| format!("Invalid encrypted token: {}", e))?;
-
-    if combined.len() < 12 {
-        return Err("Invalid encrypted token: too short".to_string());
-    }
-
-    let (nonce_bytes, ciphertext) = combined.split_at(12);
-    let nonce = Nonce::from_slice(nonce_bytes);
-
-    let plaintext = cipher
-        .decrypt(nonce, ciphertext)
-        .map_err(|e| format!("Decryption failed: {}", e))?;
-
-    String::from_utf8(plaintext).map_err(|e| format!("Invalid UTF-8 in decrypted token: {}", e))
+    crate::crypto::decrypt(encrypted, enc_key)
 }
 
 // ─── GitHub Settings I/O ────────────────────────────────────────────────────
@@ -656,7 +619,7 @@ pub fn git_push_to_remote(
         return Err(format!("Push failed: {}", stderr));
     }
 
-    debug_log!("[github] Pushed to remote: {}", remote_url);
+    debug_log!("[github] Pushed to remote (URL redacted)");
 
     Ok(GitOperationResult {
         success: true,

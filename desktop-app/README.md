@@ -17,6 +17,7 @@ Desktop app for deploying Databricks workspaces on AWS, Azure, and GCP using Ter
 - GCP service account creation with custom IAM role and impersonation setup
 - Cloud-specific permission validation before deployment
 - Rollback support (terraform destroy with resource cleanup)
+- Git integration with `terraform.tfvars.example` generation, GitHub OAuth device flow, repo creation, and push
 - AI Assistant with contextual help for each screen (GitHub Models free, OpenAI, Claude)
 - Single-instance enforcement (prevents running multiple copies)
 
@@ -218,7 +219,7 @@ npm run build          # TypeScript compilation check
 
 ### CI
 
-Pull requests targeting `main` are automatically validated by the `ci.yml` GitHub Actions workflow, which runs TypeScript compilation and the frontend test suite.
+Pull requests targeting `main` are automatically validated by the `ci.yml` GitHub Actions workflow, which runs TypeScript compilation, the frontend test suite, and backend checks (`cargo check`, `cargo test`).
 
 ### Adding Features
 - Template changes require incrementing `TEMPLATES_VERSION` in `src-tauri/src/commands/mod.rs`
@@ -232,8 +233,11 @@ Pull requests targeting `main` are automatically validated by the `ci.yml` GitHu
 | ID | Name | Cloud | Description |
 |----|------|-------|-------------|
 | `aws-simple` | AWS Standard BYOVPC | AWS | Standard workspace with customer-managed VPC ([README](src-tauri/templates/aws-simple/README.md)) |
+| `aws-sra` | AWS Security Reference Architecture | AWS | Enterprise-grade security with PrivateLink, CMK encryption, and compliance controls |
 | `azure-simple` | Azure Standard VNet | Azure | Standard workspace with VNet injection ([README](src-tauri/templates/azure-simple/README.md)) |
+| `azure-sra` | Azure Security Reference Architecture | Azure | Enterprise-grade hub-spoke deployment with Private Endpoints and CMK encryption |
 | `gcp-simple` | GCP Standard BYOVPC | GCP | Standard workspace with customer-managed VPC ([README](src-tauri/templates/gcp-simple/README.md)) |
+| `gcp-sra` | GCP Security Reference Architecture | GCP | Enterprise-grade security with Private Service Connect, CMEK, and hardened firewall ([README](src-tauri/templates/gcp-sra/readme.md)) |
 
 Each template creates Unity Catalog metastore/catalog, workspace, networking, and required cloud resources.
 
@@ -266,6 +270,7 @@ src/
     databricks.ts        # Databricks profiles, Unity Catalog types
     wizard.ts            # Wizard flow types (templates, deployment, screens)
     assistant.ts         # AI assistant types (chat, settings, models)
+    github.ts            # Git/GitHub integration types
     index.ts             # Barrel re-export
   context/
     WizardContext.tsx    # Wizard state management and shared context
@@ -279,13 +284,16 @@ src/
     useUnityCatalog.ts   # Unity Catalog metastore detection and configuration
     useWizard.ts         # Wizard navigation and step management
     useAssistant.ts      # AI assistant chat, auth, model selection
+    useGitHub.ts         # Git init, GitHub OAuth device flow, repo creation
     useSsoPolling.ts     # SSO login polling
+    usePersistedCollapse.ts # Persistent collapse state for UI sections
   utils/
     variables.ts         # Variable grouping, formatting, suffix generation
     cloudValidation.ts   # Cloud permission validation
     databricksValidation.ts # Databricks credential validation
   components/
     WizardRouter.tsx     # Main wizard routing logic
+    GitIntegrationCard.tsx  # Git init, GitHub auth, repo creation/push
     ui/
       ErrorBoundary.tsx  # React error boundary
       Alert.tsx          # Alert and StatusMessage components
@@ -329,6 +337,7 @@ src-tauri/
       databricks.rs      # Databricks authentication
       deployment.rs      # Deployment configuration and tfvars generation
       templates.rs       # Template listing and variable parsing
+      github.rs          # Git init, GitHub OAuth, repo creation, push
       assistant.rs       # AI assistant API integration (GitHub/OpenAI/Claude)
     terraform.rs         # Terraform execution (init, plan, apply, destroy)
     dependencies.rs      # CLI detection, version checks, Terraform auto-install
@@ -337,8 +346,11 @@ src-tauri/
     assistant-knowledge.md   # Embedded knowledge base for AI assistant
   templates/
     aws-simple/          # AWS BYOVPC template (see template README)
+    aws-sra/             # AWS Security Reference Architecture template
     azure-simple/        # Azure VNet injection template (see template README)
+    azure-sra/           # Azure Security Reference Architecture template
     gcp-simple/          # GCP customer-managed VPC template (see template README)
+    gcp-sra/             # GCP Security Reference Architecture template
 ```
 
 ## Troubleshooting

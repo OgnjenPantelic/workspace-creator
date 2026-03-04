@@ -40,7 +40,7 @@ export const VARIABLE_DISPLAY_NAMES: Record<string, string> = {
   existing_metastore_id: "Existing Metastore ID",
 
   // --- SRA: Azure ---
-  resource_suffix: "Resource Suffix",
+  resource_suffix: "Workspace Name",
   hub_vnet_cidr: "Hub VNet CIDR",
   hub_resource_suffix: "Hub Resource Suffix",
   create_hub: "Create Hub Infrastructure",
@@ -63,8 +63,7 @@ export const VARIABLE_DISPLAY_NAMES: Record<string, string> = {
   sat_configuration: "SAT Configuration",
 
   // --- SRA: AWS ---
-  resource_prefix: "Resource Prefix",
-  aws_account_id: "AWS Account ID",
+  resource_prefix: "Workspace Name",
   network_configuration: "Network Mode",
   vpc_cidr_range: "VPC CIDR Range",
   private_subnets_cidr: "Private Subnets CIDR",
@@ -141,7 +140,7 @@ export const VARIABLE_DESCRIPTION_OVERRIDES: Record<string, string> = {
   // Network - Azure
   create_new_vnet: "Enable to create a new VNet, or disable to use an existing VNet. New subnets will be created in either case.",
   vnet_name: "Name of your existing VNet where Databricks subnets will be created.",
-  vnet_resource_group_name: "Resource group containing the VNet. Usually the same as the main resource group.",
+  vnet_resource_group_name: "Resource group where the VNet is located. Auto-filled from the workspace resource group above — change this if your VNet is in a different resource group.",
   cidr: "Use a prefix between /16 and /24 for optimal sizing.",
   subnet_public_cidr: "CIDR range for the public (host) subnet within the VNet address space.",
   subnet_private_cidr: "CIDR range for the private (container) subnet within the VNet address space.",
@@ -162,7 +161,7 @@ export const VARIABLE_DESCRIPTION_OVERRIDES: Record<string, string> = {
   uc_catalog_name: "Custom name for the workspace catalog and S3 bucket. Leave empty to auto-generate from resource prefix.",
 
   // --- SRA: Azure ---
-  resource_suffix: "Suffix appended to all resource names (e.g. dbx-dev, sra).",
+  resource_suffix: "Name for your workspace. Also used as suffix for all resource names.",
   hub_vnet_cidr: "CIDR block for the hub Virtual Network. Required when creating hub infrastructure.",
   hub_resource_suffix: "Naming suffix for hub resources. Required when creating hub infrastructure.",
   create_hub: "Create hub infrastructure (firewall, VNet, CMK). Disable to bring your own hub.",
@@ -171,12 +170,12 @@ export const VARIABLE_DESCRIPTION_OVERRIDES: Record<string, string> = {
   cmk_enabled: "Encrypt managed disks and services with customer-managed keys. Enabled by default.",
   allowed_fqdns: "Domains that spoke workspaces can access through the firewall. By default, no internet access is allowed.",
   hub_allowed_urls: "Domains that serverless compute in the hub workspace can access. By default, no internet access is allowed.",
+  existing_ncc_name: "Display name for the Network Connectivity Config. Leave empty to use the default name.",
   databricks_metastore_id: "Existing metastore ID. Required when not creating hub infrastructure.",
   sat_configuration: "Security Analysis Tool configuration (enable, schema, catalog, serverless).",
 
   // --- SRA: AWS ---
-  aws_account_id: "Your AWS account ID. Used for IAM roles and resource policies.",
-  resource_prefix: "Prefix for all resource names (1-26 chars, lowercase and numbers).",
+  resource_prefix: "Name for your workspace. Also used as prefix for all resource names (1-26 chars, lowercase letters, numbers, hyphens, and dots).",
   network_configuration: "Network mode: 'isolated' creates a new VPC with PrivateLink; 'custom' uses your existing VPC.",
   vpc_cidr_range: "CIDR range for the VPC (e.g. 10.0.0.0/16).",
   private_subnets_cidr: "CIDR blocks for private subnets within the VPC.",
@@ -230,6 +229,7 @@ export const EXCLUDE_VARIABLES = [
   "databricks_client_secret",
   "databricks_profile",
   "databricks_auth_type",
+  "aws_account_id",
   "aws_access_key_id",
   "aws_secret_access_key",
   "aws_session_token",
@@ -247,10 +247,12 @@ export const EXCLUDE_VARIABLES = [
   "google_service_account_email",
   // Unity Catalog variables - configured in dedicated UC setup screen
   "existing_metastore_id",
+  "metastore_exists",
   "create_unity_catalog",
   "uc_catalog_name",
   "uc_storage_name",
   "uc_force_destroy",
+  "databricks_metastore_id",
   // SRA: Azure - auto-injected or internal
   "subscription_id",
   "sat_force_destroy",
@@ -436,7 +438,7 @@ export const CONDITIONAL_FIELD_VISIBILITY: {
     toggle: "create_hub",
     defaultChecked: true,
     showWhenChecked: ["hub_vnet_cidr", "hub_resource_suffix", "allowed_fqdns", "hub_allowed_urls"],
-    showWhenUnchecked: ["existing_hub_vnet", "existing_cmk_ids", "databricks_metastore_id", "existing_ncc_id", "existing_ncc_name", "existing_network_policy_id"],
+    showWhenUnchecked: ["existing_hub_vnet", "existing_cmk_ids", "existing_ncc_id", "existing_ncc_name", "existing_network_policy_id"],
   },
   // Azure SRA: workspace VNet creation vs bring-your-own
   {
@@ -457,13 +459,6 @@ export const CONDITIONAL_FIELD_VISIBILITY: {
     toggle: "enable_compliance_security_profile",
     defaultChecked: false,
     showWhenChecked: ["compliance_standards"],
-    showWhenUnchecked: [],
-  },
-  // AWS SRA: metastore_exists controls existing_metastore_id visibility
-  {
-    toggle: "metastore_exists",
-    defaultChecked: false,
-    showWhenChecked: ["existing_metastore_id"],
     showWhenUnchecked: [],
   },
   // GCP SRA: use existing VPC vs create new
