@@ -82,7 +82,7 @@ export function ConfigurationScreen() {
   };
   const onBack = goBack;
   
-  const handleFormChange = (name: string, value: string | boolean | number) => {
+  const handleFormChange = (name: string, value: string | boolean | number | string[]) => {
     setFormValues((prev) => {
       const updated = { ...prev, [name]: value };
       // Auto-fill vnet_resource_group_name when resource_group_name changes
@@ -97,7 +97,7 @@ export function ConfigurationScreen() {
         updated["vnet_resource_group_name"] = prev["resource_group_name"] || "";
       }
       // Auto-fill subnets when VNet CIDR changes (2 prefix lengths smaller)
-      if (name === "cidr" && selectedCloud === CLOUDS.AZURE) {
+      if (name === "cidr" && selectedCloud === CLOUDS.AZURE && typeof value === "string") {
         const subnets = computeSubnets(value);
         if (subnets) {
           updated["subnet_public_cidr"] = subnets.publicCidr;
@@ -105,7 +105,7 @@ export function ConfigurationScreen() {
         }
       }
       // Auto-fill subnets when VPC CIDR changes (AWS simple)
-      if (name === "cidr_block" && selectedCloud === CLOUDS.AWS) {
+      if (name === "cidr_block" && selectedCloud === CLOUDS.AWS && typeof value === "string") {
         const subnets = computeAwsSubnets(value);
         if (subnets) {
           updated["private_subnet_1_cidr"] = subnets.private1Cidr;
@@ -114,7 +114,7 @@ export function ConfigurationScreen() {
         }
       }
       // Auto-fill subnets when VPC CIDR changes (AWS SRA)
-      if (name === "vpc_cidr_range" && selectedCloud === CLOUDS.AWS) {
+      if (name === "vpc_cidr_range" && selectedCloud === CLOUDS.AWS && typeof value === "string") {
         const sra = computeAwsSraSubnets(value);
         if (sra) {
           updated["private_subnets_cidr_1"] = sra.private1;
