@@ -12,6 +12,10 @@ Desktop app for deploying Databricks workspaces on AWS, Azure, and GCP using Ter
 - Unity Catalog metastore auto-detection and assignment
 - Catalog creation with isolated storage (S3 / Azure Storage / GCS)
 - Auto-installs Terraform if missing (v1.9.8)
+- Connectivity check for Terraform registries with corporate proxy detection
+- System proxy auto-detection (macOS/Windows) injected into Terraform and HTTP requests
+- Browser-based login flows for Azure CLI, GCP ADC, and AWS SSO with cancel support
+- GCP project dropdown auto-populated from authenticated account
 - Supports CLI profiles, SSO, and service principal authentication
 - Azure identity for Databricks (no service principal needed with Azure CLI + Account Admin)
 - GCP service account creation with custom IAM role and impersonation setup
@@ -366,6 +370,7 @@ src-tauri/
       assistant.rs       # AI assistant API integration (GitHub/OpenAI/Claude)
     terraform.rs         # Terraform execution, auto-import, retry logic, output streaming
     dependencies.rs      # CLI detection, version checks, Terraform auto-install
+    proxy.rs             # System proxy detection (macOS scutil / Windows registry)
     errors.rs            # Standardized error message helpers
   resources/
     assistant-knowledge.md   # Embedded knowledge base for AI assistant
@@ -394,6 +399,9 @@ Run `gcloud auth application-default login` in terminal, then restart the app. I
 
 ### GCP service account missing permissions
 The app creates a custom role with the required permissions. If validation reports missing permissions, some (like `storage.buckets.setIamPolicy`) are bucket-level and cannot be validated at the project level -- they are still present in the role.
+
+### Connectivity check warns about unreachable domains
+Terraform needs access to `registry.terraform.io`, `releases.hashicorp.com`, and `github.com`. If you're behind a corporate proxy, ensure your system proxy is configured — the app auto-detects macOS/Windows proxy settings and injects them into Terraform. If issues persist, set `HTTPS_PROXY` environment variable before launching the app.
 
 ### Deployment stuck
 Check the logs in the deployment folder. You can run `terraform apply` manually from there.

@@ -79,9 +79,11 @@ export function AwsCredentialsScreen() {
 
         {awsAuthMode === "profile" && (
           <>
-            <Alert type="info" style={{ marginBottom: "16px" }}>
-              <strong>How to set up AWS CLI profiles:</strong>
-              <ol style={{ margin: "8px 0 0 0", paddingLeft: "20px", fontSize: "13px" }}>
+            <details style={{ marginBottom: "16px", fontSize: "13px" }}>
+              <summary style={{ cursor: "pointer", color: "#ff6b35" }}>
+                Need help setting up AWS CLI profiles?
+              </summary>
+              <ol style={{ margin: "8px 0 0 0", paddingLeft: "20px" }}>
                 <li>Install the <a href="https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html" target="_blank" rel="noopener noreferrer" style={{ color: "#ff6b35" }}>AWS CLI</a>.</li>
                 <li>Run <code>aws configure</code> (for access keys) or <code>aws configure sso</code> (for SSO).</li>
                 <li>Enter your credentials when prompted.</li>
@@ -92,7 +94,7 @@ export function AwsCredentialsScreen() {
                   Learn more →
                 </a>
               </p>
-            </Alert>
+            </details>
             {awsProfiles.length === 0 ? (
               <div>
                 <Alert type="warning">
@@ -139,10 +141,7 @@ export function AwsCredentialsScreen() {
                         Account: {awsIdentity.account}
                       </span>
                     )}
-                    {!awsLoginInProgress && awsAuthError && !awsLoading && (
-                      <span className="error">{awsAuthError}</span>
-                    )}
-                    {!awsLoginInProgress && !awsIdentity && !awsAuthError && !awsLoading && (
+                    {!awsLoginInProgress && !awsIdentity && !awsLoading && (
                       <span style={{ color: "#888" }}>Click Verify to check credentials.</span>
                     )}
                   </div>
@@ -191,9 +190,11 @@ export function AwsCredentialsScreen() {
 
         {awsAuthMode === "keys" && (
           <>
-            <Alert type="info" style={{ marginBottom: "16px" }}>
-              <strong>How to get AWS access keys:</strong>
-              <ol style={{ margin: "8px 0 0 0", paddingLeft: "20px", fontSize: "13px" }}>
+            <details style={{ marginBottom: "16px", fontSize: "13px" }}>
+              <summary style={{ cursor: "pointer", color: "#ff6b35" }}>
+                Need help creating AWS access keys?
+              </summary>
+              <ol style={{ margin: "8px 0 0 0", paddingLeft: "20px" }}>
                 <li>Go to <a href="https://console.aws.amazon.com/iam/home#/security_credentials" target="_blank" rel="noopener noreferrer" style={{ color: "#ff6b35" }}>AWS IAM Console → Security Credentials</a>.</li>
                 <li>Click "Create access key" under Access Keys section.</li>
                 <li>Copy the Access Key ID and Secret Access Key.</li>
@@ -201,7 +202,7 @@ export function AwsCredentialsScreen() {
               <p style={{ margin: "8px 0 0 0", fontSize: "12px", color: "#ffb347" }}>
                 ⚠️ Access keys are long-lived credentials. Consider using AWS CLI profiles with SSO for better security.
               </p>
-            </Alert>
+            </details>
             <div className="two-column">
               <div className="form-group">
                 <label>AWS Access Key ID *</label>

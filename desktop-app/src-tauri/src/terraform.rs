@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command, Stdio};
+use std::process::{Child, Stdio};
 use std::sync::{Arc, Mutex};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -398,36 +398,13 @@ pub fn run_terraform(
         _ => return Err(format!("Unknown command: {}", command)),
     };
 
-    let mut cmd = Command::new(&terraform_path);
+    let mut cmd = crate::commands::silent_cmd(&terraform_path);
     cmd.args(&args)
         .current_dir(working_dir)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
 
-    // Set environment variables
-    for (key, value) in env_vars {
-        cmd.env(key, value);
-    }
-
-    // Extend PATH to include common installation locations (macOS GUI apps have minimal PATH)
-    let install_dir = crate::dependencies::get_terraform_install_path();
-    let current_path = std::env::var("PATH").unwrap_or_default();
-    
-    #[cfg(target_os = "windows")]
-    let extended_path = format!(
-        "{};{}",
-        install_dir.to_string_lossy(),
-        current_path
-    );
-    
-    #[cfg(not(target_os = "windows"))]
-    let extended_path = format!(
-        "{}:/usr/local/bin:/opt/homebrew/bin:/opt/local/bin:{}",
-        install_dir.to_string_lossy(),
-        current_path
-    );
-    
-    cmd.env("PATH", extended_path);
+    apply_standard_env(&mut cmd, &env_vars);
 
     cmd.spawn().map_err(|e| e.to_string())
 }
@@ -580,30 +557,13 @@ pub fn run_terraform_import(
 ) -> Result<String, String> {
     let terraform_path = get_terraform_path();
 
-    let mut cmd = Command::new(&terraform_path);
+    let mut cmd = crate::commands::silent_cmd(&terraform_path);
     cmd.args(["import", "-no-color", "-input=false", address, id])
         .current_dir(working_dir)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
 
-    for (key, value) in env_vars {
-        cmd.env(key, value);
-    }
-
-    let install_dir = crate::dependencies::get_terraform_install_path();
-    let current_path = std::env::var("PATH").unwrap_or_default();
-
-    #[cfg(target_os = "windows")]
-    let extended_path = format!("{};{}", install_dir.to_string_lossy(), current_path);
-
-    #[cfg(not(target_os = "windows"))]
-    let extended_path = format!(
-        "{}:/usr/local/bin:/opt/homebrew/bin:/opt/local/bin:{}",
-        install_dir.to_string_lossy(),
-        current_path
-    );
-
-    cmd.env("PATH", extended_path);
+    apply_standard_env(&mut cmd, env_vars);
 
     let output = cmd.output().map_err(|e| format!("Failed to run terraform import: {}", e))?;
 
@@ -633,16 +593,14 @@ pub fn get_ncc_id_from_state(
     env_vars: &HashMap<String, String>,
 ) -> Option<String> {
     let terraform_path = get_terraform_path();
-    let extended_path = build_extended_path();
 
     // Step 1: list state entries and find the NCC resource
-    let list_output = Command::new(&terraform_path)
+    let mut list_cmd = crate::commands::silent_cmd(&terraform_path);
+    list_cmd
         .args(["state", "list", "-no-color"])
-        .current_dir(working_dir)
-        .envs(env_vars)
-        .env("PATH", &extended_path)
-        .output()
-        .ok()?;
+        .current_dir(working_dir);
+    apply_standard_env(&mut list_cmd, env_vars);
+    let list_output = list_cmd.output().ok()?;
 
     if !list_output.status.success() {
         return None;
@@ -656,13 +614,12 @@ pub fn get_ncc_id_from_state(
         .to_string();
 
     // Step 2: show the NCC resource as JSON and extract network_connectivity_config_id
-    let show_output = Command::new(&terraform_path)
+    let mut show_cmd = crate::commands::silent_cmd(&terraform_path);
+    show_cmd
         .args(["state", "show", "-json", "-no-color", &ncc_address])
-        .current_dir(working_dir)
-        .envs(env_vars)
-        .env("PATH", &extended_path)
-        .output()
-        .ok()?;
+        .current_dir(working_dir);
+    apply_standard_env(&mut show_cmd, env_vars);
+    let show_output = show_cmd.output().ok()?;
 
     if !show_output.status.success() {
         return None;
@@ -716,18 +673,16 @@ pub fn resolve_azure_role_assignment_id(
     env_vars: &HashMap<String, String>,
 ) -> Option<String> {
     let terraform_path = get_terraform_path();
-    let extended_path = build_extended_path();
 
     // Step 1: get planned values from Terraform state/plan
-    let show_output = Command::new(&terraform_path)
+    let mut show_cmd = crate::commands::silent_cmd(&terraform_path);
+    show_cmd
         .args(["show", "-json", "-no-color"])
         .current_dir(working_dir)
-        .envs(env_vars)
-        .env("PATH", &extended_path)
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .output()
-        .ok()?;
+        .stderr(Stdio::piped());
+    apply_standard_env(&mut show_cmd, env_vars);
+    let show_output = show_cmd.output().ok()?;
 
     if !show_output.status.success() {
         return None;
@@ -748,7 +703,8 @@ pub fn resolve_azure_role_assignment_id(
     // Step 2: query Azure CLI for the existing assignment
     let az_path = crate::dependencies::find_azure_cli_path()?;
 
-    let az_output = Command::new(&az_path)
+    let mut az_cmd = crate::commands::silent_cmd(&az_path);
+    az_cmd
         .args([
             "role", "assignment", "list",
             "--scope", &scope,
@@ -758,11 +714,10 @@ pub fn resolve_azure_role_assignment_id(
             "-o", "tsv",
         ])
         .current_dir(working_dir)
-        .envs(env_vars)
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .output()
-        .ok()?;
+        .stderr(Stdio::piped());
+    apply_standard_env(&mut az_cmd, env_vars);
+    let az_output = az_cmd.output().ok()?;
 
     if !az_output.status.success() {
         return None;
@@ -844,6 +799,20 @@ fn build_extended_path() -> String {
             install_dir.to_string_lossy(),
             current_path
         )
+    }
+}
+
+/// Apply standard environment to a Command: credential env vars, extended
+/// PATH, and proxy/networking settings detected from the OS.
+fn apply_standard_env(cmd: &mut std::process::Command, env_vars: &HashMap<String, String>) {
+    for (key, value) in env_vars {
+        cmd.env(key, value);
+    }
+    cmd.env("PATH", build_extended_path());
+    for (key, value) in crate::proxy::get_proxy_env_vars() {
+        if !env_vars.contains_key(&*key) {
+            cmd.env(&key, &value);
+        }
     }
 }
 
@@ -991,7 +960,6 @@ pub fn apply_import_blocks(
     ));
 
     let terraform_path = get_terraform_path();
-    let extended_path = build_extended_path();
 
     let mut args = vec![
         "apply".to_string(),
@@ -1008,14 +976,13 @@ pub fn apply_import_blocks(
         pairs.len()
     ));
 
-    let output = Command::new(&terraform_path)
-        .args(&args)
+    let mut cmd = crate::commands::silent_cmd(&terraform_path);
+    cmd.args(&args)
         .current_dir(working_dir)
-        .envs(import_env)
-        .env("PATH", &extended_path)
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .output();
+        .stderr(Stdio::piped());
+    apply_standard_env(&mut cmd, import_env);
+    let output = cmd.output();
 
     cleanup_import_file(working_dir);
 

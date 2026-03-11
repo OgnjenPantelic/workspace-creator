@@ -35,7 +35,9 @@ use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Manager};
 
 lazy_static::lazy_static! {
-    /// PID of the currently running CLI login process (shared by Azure and AWS SSO login).
+    /// PID of the currently running CLI login process (shared by Azure, AWS SSO, GCP,
+    /// and Azure Databricks consent login). Only one interactive login may run at a time;
+    /// starting a second would overwrite the tracked PID and break cancellation of the first.
     pub static ref CLI_LOGIN_PROCESS: Arc<Mutex<Option<u32>>> = Arc::new(Mutex::new(None));
 }
 
@@ -51,7 +53,30 @@ pub(crate) fn lock_or_recover<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, 
     })
 }
 
-/// Cancel an in-progress CLI login (Azure or AWS SSO).
+/// Register a newly spawned login process.
+///
+/// Returns `Err` if another interactive login is already tracked, preventing
+/// PID overwrite and potential orphan processes.  On success the PID is stored
+/// in `CLI_LOGIN_PROCESS` so `cancel_cli_login` can find it.
+pub(crate) fn acquire_login_slot(pid: u32) -> Result<(), String> {
+    let mut guard = lock_or_recover(&CLI_LOGIN_PROCESS);
+    if let Some(existing) = *guard {
+        return Err(format!(
+            "Another login is already in progress (PID {}). Please cancel it first.",
+            existing
+        ));
+    }
+    *guard = Some(pid);
+    Ok(())
+}
+
+/// Release the login slot after a login process finishes (success or failure).
+pub(crate) fn release_login_slot() {
+    let mut guard = lock_or_recover(&CLI_LOGIN_PROCESS);
+    *guard = None;
+}
+
+/// Cancel an in-progress CLI login (Azure, AWS SSO, GCP, or Azure Databricks consent).
 ///
 /// Atomically takes the stored PID to avoid TOCTOU races, then sends
 /// SIGTERM before SIGKILL on Unix to allow graceful cleanup.
@@ -64,21 +89,19 @@ pub fn cancel_cli_login() -> Result<(), String> {
 
         #[cfg(unix)]
         {
-            use std::process::Command;
             use std::thread;
             use std::time::Duration;
 
-            let _ = Command::new("pkill").args(["-TERM", "-P", &pid_str]).output();
-            let _ = Command::new("kill").args(["-TERM", &pid_str]).output();
+            let _ = silent_cmd("pkill").args(["-TERM", "-P", &pid_str]).output();
+            let _ = silent_cmd("kill").args(["-TERM", &pid_str]).output();
             thread::sleep(Duration::from_millis(200));
-            let _ = Command::new("pkill").args(["-9", "-P", &pid_str]).output();
-            let _ = Command::new("kill").args(["-9", &pid_str]).output();
+            let _ = silent_cmd("pkill").args(["-9", "-P", &pid_str]).output();
+            let _ = silent_cmd("kill").args(["-9", &pid_str]).output();
         }
 
         #[cfg(windows)]
         {
-            use std::process::Command;
-            let _ = Command::new("taskkill")
+            let _ = silent_cmd("taskkill")
                 .args(["/F", "/T", "/PID", &pid_str])
                 .output();
         }
@@ -190,6 +213,19 @@ pub(crate) const INTERNAL_VARIABLES: &[&str] = &[
 
 // ─── Helper Functions ───────────────────────────────────────────────────────
 
+/// Create a `std::process::Command` that suppresses console window popups on Windows.
+/// On non-Windows platforms this is identical to `Command::new()`.
+pub(crate) fn silent_cmd<S: AsRef<std::ffi::OsStr>>(program: S) -> std::process::Command {
+    #[allow(unused_mut)]
+    let mut cmd = std::process::Command::new(program);
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+    }
+    cmd
+}
+
 /// Recursively copy a directory tree. Used for templates and deployments.
 pub(crate) fn copy_dir_all(src: &PathBuf, dst: &PathBuf) -> Result<(), String> {
     fs::create_dir_all(dst).map_err(|e| e.to_string())?;
@@ -277,9 +313,22 @@ pub(crate) fn is_valid_uuid(s: &str) -> bool {
 }
 
 /// Create a standard HTTP client with a 30-second timeout.
+///
+/// Automatically configures the client with system proxy settings
+/// detected via [`crate::proxy`] when no proxy env vars are present.
+/// Uses `native-tls` to trust the OS certificate store (important for
+/// corporate TLS inspection).
 pub(crate) fn http_client() -> Result<reqwest::Client, String> {
-    reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(30))
+    let mut builder = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(30));
+
+    if let Some(proxy_url) = crate::proxy::get_https_proxy() {
+        if let Ok(proxy) = reqwest::Proxy::all(&proxy_url) {
+            builder = builder.proxy(proxy);
+        }
+    }
+
+    builder
         .build()
         .map_err(|e| format!("Failed to create HTTP client: {}", e))
 }

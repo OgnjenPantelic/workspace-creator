@@ -38,12 +38,10 @@ fn validate_azure_subscription_id(id: &str) -> bool {
 /// Get Azure CLI login status using `az account show`.
 #[tauri::command]
 pub fn get_azure_account() -> Result<AzureAccount, String> {
-    use std::process::Command;
-
     let az_path = dependencies::find_azure_cli_path()
         .ok_or_else(|| crate::errors::cli_not_found("Azure CLI"))?;
 
-    let output = Command::new(&az_path)
+    let output = super::silent_cmd(&az_path)
         .args(["account", "show", "--output", "json"])
         .output()
         .map_err(|e| format!("Failed to run Azure CLI: {}", e))?;
@@ -60,7 +58,18 @@ pub fn get_azure_account() -> Result<AzureAccount, String> {
     let json: serde_json::Value =
         serde_json::from_str(&stdout).map_err(|e| format!("Failed to parse response: {}", e))?;
 
-    let user = json["user"]["name"].as_str().unwrap_or("").to_string();
+    let user = json["user"]["name"]
+        .as_str()
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| {
+            match json["user"]["type"].as_str() {
+                Some("servicePrincipal") => "Service Principal".to_string(),
+                Some("managedServiceIdentity") => "Managed Identity".to_string(),
+                Some(other) => other.to_string(),
+                None => "unknown".to_string(),
+            }
+        });
 
     Ok(AzureAccount {
         user,
@@ -73,12 +82,10 @@ pub fn get_azure_account() -> Result<AzureAccount, String> {
 /// Get list of Azure subscriptions.
 #[tauri::command]
 pub fn get_azure_subscriptions() -> Result<Vec<AzureSubscription>, String> {
-    use std::process::Command;
-
     let az_path = dependencies::find_azure_cli_path()
         .ok_or_else(|| crate::errors::cli_not_found("Azure CLI"))?;
 
-    let output = Command::new(&az_path)
+    let output = super::silent_cmd(&az_path)
         .args(["account", "list", "--output", "json"])
         .output()
         .map_err(|e| format!("Failed to run Azure CLI: {}", e))?;
@@ -108,23 +115,22 @@ pub fn get_azure_subscriptions() -> Result<Vec<AzureSubscription>, String> {
 /// Trigger Azure CLI login with a 5-minute timeout. Supports cancellation via `cancel_cli_login`.
 #[tauri::command]
 pub async fn azure_login() -> Result<String, String> {
-    use std::process::Command;
     use std::time::{Duration, Instant};
-    use std::thread;
 
     let az_path = dependencies::find_azure_cli_path()
         .ok_or_else(|| crate::errors::cli_not_found("Azure CLI"))?;
 
-    let mut child = Command::new(&az_path)
+    let mut child = super::silent_cmd(&az_path)
         .args(["login"])
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .spawn()
         .map_err(|e| format!("Failed to run Azure CLI: {}", e))?;
 
-    if let Ok(mut proc) = CLI_LOGIN_PROCESS.lock() {
-        *proc = Some(child.id());
-    }
+    super::acquire_login_slot(child.id()).map_err(|e| {
+        let _ = child.kill();
+        e
+    })?;
 
     let timeout = Duration::from_secs(300);
     let start = Instant::now();
@@ -134,7 +140,6 @@ pub async fn azure_login() -> Result<String, String> {
             Ok(Some(status)) => {
                 let output = child.wait_with_output().map_err(|e| format!("Failed to read output: {}", e))?;
                 if !status.success() {
-                    // Check if this was a user-initiated cancel (PID already cleared by cancel_cli_login)
                     let was_cancelled = super::lock_or_recover(&CLI_LOGIN_PROCESS).is_none();
                     if was_cancelled {
                         break Err("LOGIN_CANCELLED".to_string());
@@ -153,15 +158,13 @@ pub async fn azure_login() -> Result<String, String> {
                     let _ = child.kill();
                     break Err("Azure login timed out after 5 minutes. Please try again.".to_string());
                 }
-                thread::sleep(Duration::from_millis(500));
+                tokio::time::sleep(Duration::from_millis(500)).await;
             }
             Err(e) => break Err(format!("Error waiting for Azure CLI: {}", e)),
         }
     };
 
-    if let Ok(mut proc) = CLI_LOGIN_PROCESS.lock() {
-        *proc = None;
-    }
+    super::release_login_slot();
 
     result
 }
@@ -169,8 +172,6 @@ pub async fn azure_login() -> Result<String, String> {
 /// Set the active Azure subscription.
 #[tauri::command]
 pub fn set_azure_subscription(subscription_id: String) -> Result<(), String> {
-    use std::process::Command;
-
     if !validate_azure_subscription_id(&subscription_id) {
         return Err("Invalid Azure subscription ID format".to_string());
     }
@@ -178,7 +179,7 @@ pub fn set_azure_subscription(subscription_id: String) -> Result<(), String> {
     let az_path = dependencies::find_azure_cli_path()
         .ok_or_else(|| crate::errors::cli_not_found("Azure CLI"))?;
 
-    let output = Command::new(&az_path)
+    let output = super::silent_cmd(&az_path)
         .args(["account", "set", "--subscription", &subscription_id])
         .output()
         .map_err(|e| format!("Failed to run Azure CLI: {}", e))?;
@@ -197,12 +198,10 @@ pub fn set_azure_subscription(subscription_id: String) -> Result<(), String> {
 /// List Azure resource groups using `az group list`.
 #[tauri::command]
 pub fn get_azure_resource_groups() -> Result<Vec<AzureResourceGroup>, String> {
-    use std::process::Command;
-
     let az_path = dependencies::find_azure_cli_path()
         .ok_or_else(|| crate::errors::cli_not_found("Azure CLI"))?;
 
-    let output = Command::new(&az_path)
+    let output = super::silent_cmd(&az_path)
         .args(["group", "list", "--output", "json"])
         .output()
         .map_err(|e| format!("Failed to run Azure CLI: {}", e))?;
@@ -353,12 +352,10 @@ pub struct AzureVnet {
 /// List Azure VNets in the current subscription using `az network vnet list`.
 #[tauri::command]
 pub fn get_azure_vnets() -> Result<Vec<AzureVnet>, String> {
-    use std::process::Command;
-
     let az_path = dependencies::find_azure_cli_path()
         .ok_or_else(|| crate::errors::cli_not_found("Azure CLI"))?;
 
-    let output = Command::new(&az_path)
+    let output = super::silent_cmd(&az_path)
         .args(["network", "vnet", "list", "--output", "json"])
         .output()
         .map_err(|e| format!("Failed to run Azure CLI: {}", e))?;
@@ -537,15 +534,13 @@ fn rg_has_deployer_tag(json: &serde_json::Value) -> bool {
 pub fn check_resource_names_available(
     names: Vec<String>,
 ) -> Result<Vec<ResourceNameConflict>, String> {
-    use std::process::Command;
-
     let az_path = dependencies::find_azure_cli_path()
         .ok_or_else(|| crate::errors::cli_not_found("Azure CLI"))?;
 
     let mut conflicts = Vec::new();
 
     for name in &names {
-        let output = Command::new(&az_path)
+        let output = super::silent_cmd(&az_path)
             .args(["group", "show", "-n", name, "--output", "json"])
             .output()
             .map_err(|e| format!("Failed to run Azure CLI: {}", e))?;
@@ -698,7 +693,7 @@ pub async fn check_azure_permissions(
         .ok_or("Azure subscription ID is required for permission check")?;
 
     // Get current signed-in principal info
-    let mut account_cmd = std::process::Command::new(&az_cli);
+    let mut account_cmd = super::silent_cmd(&az_cli);
     account_cmd.args(["account", "show", "--output", "json"]);
 
     let account_output = account_cmd
@@ -744,7 +739,7 @@ pub async fn check_azure_permissions(
     }
 
     // List role assignments for the principal
-    let mut role_cmd = std::process::Command::new(&az_cli);
+    let mut role_cmd = super::silent_cmd(&az_cli);
     role_cmd.args([
         "role",
         "assignment",

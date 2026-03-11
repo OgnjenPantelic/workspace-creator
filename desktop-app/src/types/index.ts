@@ -5,6 +5,7 @@ export type {
   AzureSubscription,
   AzureAccount,
   AzureVnet,
+  GcpProject,
   GcpValidation,
   CloudPermissionCheck,
 } from "./cloud";

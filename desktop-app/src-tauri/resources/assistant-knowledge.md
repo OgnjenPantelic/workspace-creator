@@ -11,8 +11,8 @@ Databricks Deployer helps users deploy Databricks workspaces on AWS, Azure, or G
 
 1. **Welcome** - Introduction. Click **"Get Started"** to begin.
 2. **Cloud Selection** - Choose AWS, Azure, or GCP by clicking a cloud card. Use **"← Back"** to return.
-3. **Dependencies** - Checks Terraform CLI, Git, and optionally cloud CLIs (AWS/Azure/GCP) and Databricks CLI are installed. Terraform and Git are required to continue. Click **"Install"** to auto-install Terraform. Click **"Continue →"** to proceed.
-4. **Cloud Credentials** - Authenticate with the chosen cloud provider. Use **"Verify"** to check identity, **"SSO Login"** (AWS) or **"Login"** (Azure) for authentication, **"Verify Credentials"** (GCP). Click **"Validate & Continue →"** to proceed.
+3. **Dependencies** - Checks Terraform CLI, Git, and optionally cloud CLIs (AWS/Azure/GCP) and Databricks CLI are installed. Terraform and Git are required to continue. Click **"Install"** to auto-install Terraform. Also runs a connectivity check against registry.terraform.io, releases.hashicorp.com, and github.com — a warning banner appears if any are unreachable (e.g. corporate proxy). Click **"Continue →"** to proceed.
+4. **Cloud Credentials** - Authenticate with the chosen cloud provider. Use **"Verify"** to check identity, **"SSO Login"** (AWS) or **"Sign in with Azure"** (Azure) or **"Sign in with GCP"** (GCP) for browser-based authentication. Click **"Validate & Continue →"** to proceed.
 5. **Databricks Credentials** - Authenticate with Databricks account (Account ID + service principal or CLI profile). Use **"+ Add service principal as profile"** to add a new profile. Click **"Validate & Continue →"** to proceed.
 6. **Template Selection** - Choose a Terraform deployment template by clicking a template card. Each template defines the cloud infrastructure that will be created.
 7. **Configuration** - Fill in the template's Terraform variables: workspace name, region, networking, tags, etc. These values are used to generate the Terraform input file for deployment. On Azure, clicking **"Continue →"** pre-checks whether resource group names already exist — if a conflict is found a dialog offers **"Go Back"** or **"Continue Anyway"**. Resources tagged by a previous deployer run are allowed through automatically.
@@ -60,7 +60,7 @@ After successful deployment, initialize a git repo and optionally push to GitHub
 - "Terraform not found": Install from terraform.io or click **"Install"** button on Dependencies screen to auto-install.
 - "AWS SSO token expired": Click **"SSO Login"** button to re-authenticate (tokens expire after 8-12 hours).
 - "Azure subscription not found": Click **"Login"** button to run `az login` again, verify subscription is active.
-- "GCP impersonation mismatch": Click **"Verify Credentials"** button to auto-fill the correct SA email.
+- "GCP impersonation mismatch": Click **"Refresh"** to auto-fill the correct SA email.
 - "Databricks Account ID invalid": It's a UUID from Account Console, not the workspace URL.
 - "Permission denied" during deploy: Check permission warnings from credential screens. Click **"Go Back & Edit"** to fix credentials.
 - "Resource already exists": Previous deployment left resources. The app will automatically attempt to import the existing resources and retry the deployment. If auto-import fails, click **"Cleanup Resources"** or **"Delete Workspace & Resources"** to rollback, or clean up manually.
@@ -68,6 +68,7 @@ After successful deployment, initialize a git repo and optionally push to GitHub
 - "Storage name already taken": S3 bucket and Azure Storage names must be globally unique. Click **"Go Back & Edit"** to change storage name.
 - "State lock" error: Another Terraform process may be running. Wait for it to finish or manually remove the lock file in the deployment directory.
 - "Provider authentication failed": Credentials may have expired. Go back to the credential screen and re-authenticate.
+- "Network connectivity issue detected": Terraform cannot reach required services. If behind a corporate proxy, configure system proxy settings. Check that registry.terraform.io, releases.hashicorp.com, and github.com are reachable.
 
 <!-- section: cloud-auth -->
 # Cloud Provider Authentication
@@ -79,14 +80,14 @@ After successful deployment, initialize a git repo and optionally push to GitHub
 - Click **"Validate & Continue →"** to proceed to next step.
 
 ## Azure
-- **Azure CLI (recommended)**: Click **"Login"** to open `az login` in the browser (non-blocking, 5-minute timeout). While login is in progress a **"Cancel"** button replaces the Login/Verify buttons. After logging in the button changes to **"Switch Account"** to re-authenticate with a different identity. Click **"Verify"** to check identity. Select a subscription from dropdown.
+- **Azure CLI (recommended)**: Click **"Sign in with Azure"** to open `az login` in the browser (non-blocking, 5-minute timeout). While login is in progress a **"Cancel"** button appears. After logging in the button changes to **"Switch Account"** to re-authenticate with a different identity. Use the **"Refresh"** link if you logged in via CLI separately. Select a subscription from dropdown — click **"Can't find your subscription?"** for help with wrong tenant or missing access. Help instructions are collapsed in a `<details>` element.
 - **Service Principal**: Enter Tenant ID, Subscription ID, Client ID, Client Secret.
 - Checks for Contributor + User Access Administrator roles.
 - After auth, asks if you're a Databricks Account Admin to optionally use Azure identity directly.
 - Click **"Validate & Continue →"** to proceed to next step.
 
 ## GCP
-- **Application Default Credentials (recommended)**: Run `gcloud auth login`, then configure a service account via impersonation. Click **"Verify Credentials"** to check. Can create a new SA (click **"Create Service Account"** then **"Create"**) or use existing. Use **"Use Different Service Account"** to switch SA.
+- **Application Default Credentials (recommended)**: Click **"Sign in with GCP"** to open `gcloud auth login` in the browser (non-blocking). While login is in progress a **"Cancel"** button appears. After logging in the button changes to **"Switch Account"**. Use the **"Refresh"** link if you logged in via CLI separately. Project and service account fields only appear after successful authentication. Select a project from the dropdown (auto-populated from your GCP account) or click **"Enter ID manually"** to type a project ID. Then configure a service account via impersonation — can create a new SA (click **"Create Service Account"** then **"Create"**) or use existing. Use **"Use Different Service Account"** to switch SA. Help instructions are collapsed in a `<details>` element.
 - **Service Account Key**: Paste the SA JSON key content.
 - SA must have Owner role on the project and be added to Databricks Account Console.
 - Click **"Validate & Continue →"** to proceed to next step.

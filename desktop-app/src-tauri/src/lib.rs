@@ -2,6 +2,7 @@ mod commands;
 mod crypto;
 mod dependencies;
 mod errors;
+pub(crate) mod proxy;
 mod terraform;
 
 use commands::debug_log;
@@ -26,6 +27,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::check_dependencies,
+            commands::check_terraform_connectivity,
             commands::install_terraform,
             commands::validate_databricks_credentials,
             commands::get_templates,
@@ -63,6 +65,8 @@ pub fn run() {
             commands::check_aws_permissions,
             commands::check_azure_permissions,
             commands::validate_gcp_credentials,
+            commands::get_gcp_projects,
+            commands::gcp_login,
             commands::check_gcp_permissions,
             commands::validate_gcp_databricks_access,
             commands::validate_gcp_databricks_access_with_key,

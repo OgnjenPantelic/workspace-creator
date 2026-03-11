@@ -769,6 +769,7 @@ dependencies = [
  "tempfile",
  "tokio",
  "which",
+ "winreg",
  "zip",
 ]
 

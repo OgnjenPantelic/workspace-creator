@@ -1,12 +1,19 @@
 //! GCP authentication, permission checking, and service account management commands.
 
 use super::debug_log;
-use super::{http_client, is_valid_uuid};
+use super::{http_client, is_valid_uuid, CLI_LOGIN_PROCESS};
 #[cfg(debug_assertions)]
 use super::mask_sensitive_id;
 use super::{CloudCredentials, CloudPermissionCheck};
 use crate::dependencies;
 use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct GcpProject {
+    pub project_id: String,
+    pub name: String,
+    pub state: String,
+}
 
 /// Required GCP permissions for Databricks workspace deployment.
 /// From: <https://docs.databricks.com/gcp/en/admin/cloud-configurations/gcp/permissions>
@@ -196,7 +203,7 @@ async fn get_gcp_oauth_token(
 
     debug_log!("[check_gcp_permissions] Falling back to gcloud CLI for token");
 
-    let impersonate_output = std::process::Command::new(&gcloud_cli)
+    let impersonate_output = super::silent_cmd(&gcloud_cli)
         .args(["config", "get-value", "auth/impersonate_service_account"])
         .output()
         .ok();
@@ -207,7 +214,7 @@ async fn get_gcp_oauth_token(
         .filter(|s| !s.is_empty() && s != "(unset)");
 
     let token_output = if let Some(ref sa_email) = impersonated_account {
-        std::process::Command::new(&gcloud_cli)
+        super::silent_cmd(&gcloud_cli)
             .args([
                 "auth",
                 "print-access-token",
@@ -217,7 +224,7 @@ async fn get_gcp_oauth_token(
             .output()
             .map_err(|e| format!("Failed to get impersonated token: {}", e))?
     } else {
-        std::process::Command::new(&gcloud_cli)
+        super::silent_cmd(&gcloud_cli)
             .args(["auth", "print-access-token"])
             .output()
             .map_err(|e| format!("Failed to get access token: {}", e))?
@@ -247,7 +254,7 @@ pub async fn validate_gcp_credentials(
 
     if use_adc {
         // Check for service account impersonation
-        let mut impersonate_cmd = std::process::Command::new(&gcloud_cli);
+        let mut impersonate_cmd = super::silent_cmd(&gcloud_cli);
         impersonate_cmd.args(["config", "get-value", "auth/impersonate_service_account"]);
 
         let impersonate_output = impersonate_cmd
@@ -270,11 +277,11 @@ pub async fn validate_gcp_credentials(
         // Get OAuth access token (handle impersonation correctly)
         let oauth_token = if impersonated_account.is_some() {
             // Temporarily unset impersonation to get the user's actual token
-            let _ = std::process::Command::new(&gcloud_cli)
+            let _ = super::silent_cmd(&gcloud_cli)
                 .args(["config", "unset", "auth/impersonate_service_account"])
                 .output();
 
-            let mut token_cmd = std::process::Command::new(&gcloud_cli);
+            let mut token_cmd = super::silent_cmd(&gcloud_cli);
             token_cmd.args(["auth", "print-access-token"]);
 
             let token_output = token_cmd
@@ -283,7 +290,7 @@ pub async fn validate_gcp_credentials(
 
             // Restore impersonation immediately
             if let Some(ref sa) = impersonated_account {
-                let _ = std::process::Command::new(&gcloud_cli)
+                let _ = super::silent_cmd(&gcloud_cli)
                     .args(["config", "set", "auth/impersonate_service_account", sa])
                     .output();
             }
@@ -307,7 +314,7 @@ pub async fn validate_gcp_credentials(
                 .trim()
                 .to_string()
         } else {
-            let mut token_cmd = std::process::Command::new(&gcloud_cli);
+            let mut token_cmd = super::silent_cmd(&gcloud_cli);
             token_cmd.args(["auth", "print-access-token"]);
 
             let token_output = token_cmd
@@ -335,7 +342,7 @@ pub async fn validate_gcp_credentials(
         };
 
         // Get current account
-        let mut account_cmd = std::process::Command::new(&gcloud_cli);
+        let mut account_cmd = super::silent_cmd(&gcloud_cli);
         account_cmd.args(["config", "get-value", "account"]);
 
         let account_output = account_cmd
@@ -356,7 +363,7 @@ pub async fn validate_gcp_credentials(
         };
 
         // Get default project
-        let mut project_cmd = std::process::Command::new(&gcloud_cli);
+        let mut project_cmd = super::silent_cmd(&gcloud_cli);
         project_cmd.args(["config", "get-value", "project"]);
 
         let project_output = project_cmd
@@ -381,12 +388,12 @@ pub async fn validate_gcp_credentials(
         // Validate project exists
         if let Some(proj_id) = credentials.gcp_project_id.as_ref().filter(|s| !s.is_empty()) {
             if impersonated_account.is_some() {
-                let _ = std::process::Command::new(&gcloud_cli)
+                let _ = super::silent_cmd(&gcloud_cli)
                     .args(["config", "unset", "auth/impersonate_service_account"])
                     .output();
             }
 
-            let mut describe_cmd = std::process::Command::new(&gcloud_cli);
+            let mut describe_cmd = super::silent_cmd(&gcloud_cli);
             describe_cmd.args([
                 "projects",
                 "describe",
@@ -399,7 +406,7 @@ pub async fn validate_gcp_credentials(
                 .map_err(|e| format!("Failed to validate project: {}", e))?;
 
             if let Some(ref sa) = impersonated_account {
-                let _ = std::process::Command::new(&gcloud_cli)
+                let _ = super::silent_cmd(&gcloud_cli)
                     .args(["config", "set", "auth/impersonate_service_account", sa])
                     .output();
             }
@@ -499,6 +506,102 @@ pub async fn validate_gcp_credentials(
             impersonated_account: client_email,
         })
     }
+}
+
+/// List GCP projects accessible to the current authenticated user.
+#[tauri::command]
+pub fn get_gcp_projects() -> Result<Vec<GcpProject>, String> {
+    let gcloud_cli = dependencies::find_gcloud_cli_path()
+        .ok_or_else(|| crate::errors::cli_not_found("Google Cloud CLI"))?;
+
+    let output = super::silent_cmd(&gcloud_cli)
+        .args(["projects", "list", "--format=json", "--sort-by=name"])
+        .output()
+        .map_err(|e| format!("Failed to list GCP projects: {}", e))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("gcloud error: {}", stderr.trim()));
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let json: Vec<serde_json::Value> =
+        serde_json::from_str(&stdout).map_err(|e| format!("Failed to parse response: {}", e))?;
+
+    let projects: Vec<GcpProject> = json
+        .iter()
+        .filter(|p| p["lifecycleState"].as_str() == Some("ACTIVE"))
+        .map(|p| GcpProject {
+            project_id: p["projectId"].as_str().unwrap_or("").to_string(),
+            name: p["name"].as_str().unwrap_or("").to_string(),
+            state: p["lifecycleState"].as_str().unwrap_or("").to_string(),
+        })
+        .collect();
+
+    Ok(projects)
+}
+
+/// Trigger interactive GCP login with a 5-minute timeout.
+/// Supports cancellation via `cancel_cli_login`.
+#[tauri::command]
+pub async fn gcp_login() -> Result<String, String> {
+    use std::time::{Duration, Instant};
+
+    let gcloud_cli = dependencies::find_gcloud_cli_path()
+        .ok_or_else(|| crate::errors::cli_not_found("Google Cloud CLI"))?;
+
+    let mut child = super::silent_cmd(&gcloud_cli)
+        .args(["auth", "login"])
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .map_err(|e| format!("Failed to run Google Cloud CLI: {}", e))?;
+
+    super::acquire_login_slot(child.id()).map_err(|e| {
+        let _ = child.kill();
+        e
+    })?;
+
+    let timeout = Duration::from_secs(300);
+    let start = Instant::now();
+
+    let result = loop {
+        match child.try_wait() {
+            Ok(Some(status)) => {
+                let output = child
+                    .wait_with_output()
+                    .map_err(|e| format!("Failed to read output: {}", e))?;
+                if !status.success() {
+                    let was_cancelled = super::lock_or_recover(&CLI_LOGIN_PROCESS).is_none();
+                    if was_cancelled {
+                        break Err("LOGIN_CANCELLED".to_string());
+                    }
+                    let stderr = String::from_utf8_lossy(&output.stderr);
+                    let stderr_str = stderr.trim();
+                    if stderr_str.is_empty()
+                        || stderr_str.contains("Killed")
+                        || stderr_str.contains("terminated")
+                    {
+                        break Err("LOGIN_CANCELLED".to_string());
+                    }
+                    break Err(format!("GCP login failed: {}", stderr_str));
+                }
+                break Ok("GCP login completed successfully.".to_string());
+            }
+            Ok(None) => {
+                if start.elapsed() >= timeout {
+                    let _ = child.kill();
+                    break Err("GCP login timed out after 5 minutes. Please try again.".to_string());
+                }
+                tokio::time::sleep(Duration::from_millis(500)).await;
+            }
+            Err(e) => break Err(format!("Error waiting for gcloud: {}", e)),
+        }
+    };
+
+    super::release_login_slot();
+
+    result
 }
 
 /// Validate GCP Databricks account access.
@@ -760,7 +863,7 @@ pub async fn check_gcp_permissions(
         proj.clone()
     } else {
         if let Some(gcloud_cli) = dependencies::find_gcloud_cli_path() {
-            let config_output = std::process::Command::new(&gcloud_cli)
+            let config_output = super::silent_cmd(&gcloud_cli)
                 .args(["config", "get-value", "project"])
                 .output()
                 .ok();
@@ -910,8 +1013,6 @@ pub async fn create_gcp_service_account(
     project_id: String,
     sa_name: String,
 ) -> Result<String, String> {
-    use std::process::Command;
-
     let gcloud_cli = dependencies::find_gcloud_cli_path()
         .ok_or_else(|| crate::errors::cli_not_found("Google Cloud CLI"))?;
 
@@ -936,7 +1037,7 @@ pub async fn create_gcp_service_account(
     }
 
     // Step 0: Get current user's email
-    let user_output = Command::new(&gcloud_cli)
+    let user_output = super::silent_cmd(&gcloud_cli)
         .args(["config", "get-value", "account"])
         .output()
         .map_err(|e| format!("Failed to get current user: {}", e))?;
@@ -953,7 +1054,7 @@ pub async fn create_gcp_service_account(
     let sa_email = format!("{}@{}.iam.gserviceaccount.com", sa_name, project_id);
 
     // Step 1: Create service account
-    let create_output = Command::new(&gcloud_cli)
+    let create_output = super::silent_cmd(&gcloud_cli)
         .args([
             "iam",
             "service-accounts",
@@ -982,7 +1083,7 @@ pub async fn create_gcp_service_account(
     // Step 2a: Create custom role
     let permissions_str = GCP_DATABRICKS_PERMISSIONS.join(",");
 
-    let create_role_output = Command::new(&gcloud_cli)
+    let create_role_output = super::silent_cmd(&gcloud_cli)
         .args([
             "iam",
             "roles",
@@ -1023,7 +1124,7 @@ pub async fn create_gcp_service_account(
     // Step 2b: Grant custom role to the SA
     let custom_role_path = format!("projects/{}/roles/{}", project_id, GCP_CUSTOM_ROLE_NAME);
 
-    let grant_output = Command::new(&gcloud_cli)
+    let grant_output = super::silent_cmd(&gcloud_cli)
         .args([
             "projects",
             "add-iam-policy-binding",
@@ -1047,7 +1148,7 @@ pub async fn create_gcp_service_account(
     }
 
     // Step 3: Grant Service Account Token Creator role to user
-    let token_creator_output = Command::new(&gcloud_cli)
+    let token_creator_output = super::silent_cmd(&gcloud_cli)
         .args([
             "iam",
             "service-accounts",
@@ -1072,7 +1173,7 @@ pub async fn create_gcp_service_account(
     }
 
     // Step 3b: Grant SA the Token Creator role on itself
-    let sa_self_token_creator = Command::new(&gcloud_cli)
+    let sa_self_token_creator = super::silent_cmd(&gcloud_cli)
         .args([
             "iam",
             "service-accounts",
@@ -1097,7 +1198,7 @@ pub async fn create_gcp_service_account(
     }
 
     // Step 4: Configure impersonation
-    let impersonate_output = Command::new(&gcloud_cli)
+    let impersonate_output = super::silent_cmd(&gcloud_cli)
         .args([
             "config",
             "set",
@@ -1122,7 +1223,7 @@ pub async fn create_gcp_service_account(
     loop {
         attempt += 1;
 
-        let token_test = Command::new(&gcloud_cli)
+        let token_test = super::silent_cmd(&gcloud_cli)
             .args(["auth", "print-access-token"])
             .output();
 
@@ -1133,7 +1234,7 @@ pub async fn create_gcp_service_account(
         }
 
         if attempt >= max_attempts {
-            let _ = Command::new(&gcloud_cli)
+            let _ = super::silent_cmd(&gcloud_cli)
                 .args(["config", "unset", "auth/impersonate_service_account"])
                 .output();
 
@@ -1156,8 +1257,6 @@ pub async fn add_service_account_to_databricks(
     account_id: String,
     service_account_email: String,
 ) -> Result<String, String> {
-    use std::process::Command;
-
     let accounts_host = "accounts.gcp.databricks.com";
     let client = http_client()?;
 
@@ -1171,7 +1270,7 @@ pub async fn add_service_account_to_databricks(
     let gcloud_cli = dependencies::find_gcloud_cli_path()
         .ok_or_else(|| crate::errors::cli_not_found("Google Cloud CLI"))?;
 
-    let user_output = Command::new(&gcloud_cli)
+    let user_output = super::silent_cmd(&gcloud_cli)
         .args(["config", "get-value", "account"])
         .output()
         .map_err(|e| format!("Failed to get current user: {}", e))?;
@@ -1186,7 +1285,7 @@ pub async fn add_service_account_to_databricks(
     }
 
     // Check if impersonation is currently configured
-    let impersonate_check = Command::new(&gcloud_cli)
+    let impersonate_check = super::silent_cmd(&gcloud_cli)
         .args(["config", "get-value", "auth/impersonate_service_account"])
         .output()
         .ok();
@@ -1206,20 +1305,20 @@ pub async fn add_service_account_to_databricks(
 
     // Temporarily disable impersonation
     if current_impersonation.is_some() {
-        let _ = Command::new(&gcloud_cli)
+        let _ = super::silent_cmd(&gcloud_cli)
             .args(["config", "unset", "auth/impersonate_service_account"])
             .output();
     }
 
     // Get a fresh OAuth token for the USER
-    let token_output = Command::new(&gcloud_cli)
+    let token_output = super::silent_cmd(&gcloud_cli)
         .args(["auth", "print-access-token"])
         .output()
         .map_err(|e| format!("Failed to get OAuth token: {}", e))?;
 
     // Restore impersonation
     if let Some(ref sa_email) = current_impersonation {
-        let _ = Command::new(&gcloud_cli)
+        let _ = super::silent_cmd(&gcloud_cli)
             .args([
                 "config",
                 "set",

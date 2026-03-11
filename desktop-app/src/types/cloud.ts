@@ -53,6 +53,12 @@ export interface AzureAccount {
   subscription_name: string;
 }
 
+export interface GcpProject {
+  project_id: string;
+  name: string;
+  state: string;
+}
+
 export interface GcpValidation {
   valid: boolean;
   project_id: string | null;

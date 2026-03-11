@@ -371,4 +371,63 @@ describe("cloudValidation", () => {
       });
     });
   });
+
+  // ---------------------------------------------------------------------------
+  // Edge case coverage for fallback error messages
+  // ---------------------------------------------------------------------------
+  describe("error fallback branches", () => {
+    it("AWS: uses fallback message when error is falsy", async () => {
+      mockInvoke.mockRejectedValueOnce("");
+
+      const result = await validateAwsCredentials({
+        authMode: "profile",
+        identity: { account: "123", arn: "arn", user_id: "U1" },
+        credentials: { cloud: "aws", aws_profile: "default" },
+      });
+
+      expect(result.proceed).toBe(false);
+      expect(result.error).toBe("Credential validation failed");
+    });
+
+    it("Azure: uses fallback message when error is falsy", async () => {
+      mockInvoke.mockRejectedValueOnce("");
+
+      const result = await validateAzureCredentials({
+        authMode: "cli",
+        account: { user: "u", tenant_id: "t", subscription_id: "s", subscription_name: "n" },
+        credentials: { cloud: "azure", azure_subscription_id: "s" },
+      });
+
+      expect(result.proceed).toBe(false);
+      expect(result.error).toBe("Credential validation failed");
+    });
+
+    it("AWS keys: whitespace-only access key is treated as missing", async () => {
+      const result = await validateAwsCredentials({
+        authMode: "keys",
+        identity: null,
+        credentials: { cloud: "aws", aws_access_key_id: "   ", aws_secret_access_key: "secret" },
+      });
+
+      expect(result.proceed).toBe(false);
+      expect(result.error).toBe("AWS Access Key ID is required");
+    });
+
+    it("Azure SP: whitespace-only tenant ID is treated as missing", async () => {
+      const result = await validateAzureCredentials({
+        authMode: "service_principal",
+        account: null,
+        credentials: {
+          cloud: "azure",
+          azure_tenant_id: "   ",
+          azure_subscription_id: "sub",
+          azure_client_id: "cid",
+          azure_client_secret: "sec",
+        },
+      });
+
+      expect(result.proceed).toBe(false);
+      expect(result.error).toBe("Azure Tenant ID is required");
+    });
+  });
 });

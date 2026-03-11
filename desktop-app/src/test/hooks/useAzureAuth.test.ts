@@ -70,6 +70,23 @@ describe("useAzureAuth", () => {
       expect(result.current.subscriptions).toEqual(subs);
     });
 
+    it("returns subscriptions from all tenants without filtering", async () => {
+      const subs: AzureSubscription[] = [
+        { id: "s-1", name: "Home Sub", is_default: true, tenant_id: "t-home" },
+        { id: "s-2", name: "Guest Sub", is_default: false, tenant_id: "t-guest" },
+      ];
+      mockInvoke.mockResolvedValueOnce(subs);
+
+      const { result } = renderHook(() => useAzureAuth());
+
+      await act(async () => {
+        await result.current.loadSubscriptions();
+      });
+
+      expect(result.current.subscriptions).toEqual(subs);
+      expect(result.current.subscriptions).toHaveLength(2);
+    });
+
     it("sets subscriptions to empty array on error", async () => {
       mockInvoke.mockRejectedValueOnce(new Error("fail"));
 

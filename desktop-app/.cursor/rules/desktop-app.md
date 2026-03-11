@@ -47,10 +47,10 @@ WelcomeScreen → CloudSelectionScreen → DependenciesScreen
 |--------|------|---------|---------------------|
 | **WelcomeScreen** | `screens/WelcomeScreen.tsx` | Intro, feature grid, "Get Started" | — |
 | **CloudSelectionScreen** | `screens/CloudSelectionScreen.tsx` | Choose Azure/AWS/GCP | — |
-| **DependenciesScreen** | `screens/DependenciesScreen.tsx` | Check Terraform, Git, cloud CLI, Databricks CLI; install Terraform | `check_dependencies`, `install_terraform` |
+| **DependenciesScreen** | `screens/DependenciesScreen.tsx` | Check Terraform, Git, cloud CLI, Databricks CLI; install Terraform; connectivity check | `check_dependencies`, `check_terraform_connectivity`, `install_terraform` |
 | **AwsCredentialsScreen** | `screens/credentials/AwsCredentialsScreen.tsx` | AWS profile or access keys, SSO login, permission check | `get_aws_profiles`, `get_aws_identity`, `aws_sso_login`, `check_aws_permissions` |
 | **AzureCredentialsScreen** | `screens/credentials/AzureCredentialsScreen.tsx` | Azure CLI or service principal, subscription selection | `get_azure_account`, `get_azure_subscriptions`, `azure_login`, `set_azure_subscription`, `check_azure_permissions` |
-| **GcpCredentialsScreen** | `screens/credentials/GcpCredentialsScreen.tsx` | ADC or service account key, create SA, permission check | `validate_gcp_credentials`, `create_gcp_service_account`, `check_gcp_permissions` |
+| **GcpCredentialsScreen** | `screens/credentials/GcpCredentialsScreen.tsx` | ADC or service account key, browser login, project dropdown, create SA, permission check | `validate_gcp_credentials`, `gcp_login`, `get_gcp_projects`, `create_gcp_service_account`, `check_gcp_permissions` |
 | **DatabricksCredentialsScreen** | `screens/credentials/DatabricksCredentialsScreen.tsx` | Databricks profile or SP, GCP/Azure identity modes | `get_databricks_profiles`, `get_databricks_profile_credentials`, `validate_databricks_credentials`, `create_databricks_sp_profile` |
 | **TemplateSelectionScreen** | `screens/TemplateSelectionScreen.tsx` | Pick template for selected cloud | `get_templates`, `get_template_variables` |
 | **ConfigurationScreen** | `screens/ConfigurationScreen.tsx` | Terraform variables form, sections, validation, CIDR helpers, resource name conflict pre-check | `get_template_variables`, `get_azure_resource_groups`, `get_azure_vnets`, `check_resource_names_available`, `check_resource_names_available_sp` |
@@ -61,11 +61,11 @@ WelcomeScreen → CloudSelectionScreen → DependenciesScreen
 
 | Module | Key commands |
 |--------|-------------|
-| `commands/deployment.rs` | `check_dependencies`, `install_terraform`, `save_configuration`, `run_terraform_command`, `get_deployment_status`, `reset_deployment_status`, `cancel_deployment`, `rollback_deployment`, `get_cloud_credentials`, `get_deployments_folder`, `open_folder`, `open_url` |
+| `commands/deployment.rs` | `check_dependencies`, `check_terraform_connectivity`, `install_terraform`, `save_configuration`, `run_terraform_command`, `get_deployment_status`, `reset_deployment_status`, `cancel_deployment`, `rollback_deployment`, `get_cloud_credentials`, `get_deployments_folder`, `open_folder`, `open_url` |
 | `commands/templates.rs` | `get_templates`, `get_template_variables`, `clear_templates_cache` |
 | `commands/aws.rs` | `get_aws_profiles`, `get_aws_identity`, `aws_sso_login`, `check_aws_permissions` |
 | `commands/azure.rs` | `get_azure_account`, `get_azure_subscriptions`, `azure_login`, `cancel_cli_login`, `set_azure_subscription`, `get_azure_resource_groups`, `get_azure_resource_groups_sp`, `get_azure_vnets`, `get_azure_vnets_sp`, `check_resource_names_available`, `check_resource_names_available_sp`, `check_azure_permissions` |
-| `commands/gcp.rs` | `validate_gcp_credentials`, `validate_gcp_databricks_access`, `validate_gcp_databricks_access_with_key`, `check_gcp_permissions`, `create_gcp_service_account`, `add_service_account_to_databricks` |
+| `commands/gcp.rs` | `validate_gcp_credentials`, `gcp_login`, `get_gcp_projects`, `validate_gcp_databricks_access`, `validate_gcp_databricks_access_with_key`, `check_gcp_permissions`, `create_gcp_service_account`, `add_service_account_to_databricks` |
 | `commands/databricks.rs` | `get_databricks_profiles`, `databricks_cli_login`, `get_databricks_profile_credentials`, `create_databricks_sp_profile`, `validate_databricks_credentials`, `validate_databricks_profile`, `check_uc_permissions`, `validate_azure_databricks_identity` |
 | `commands/github.rs` | `git_get_status`, `preview_tfvars_example`, `git_init_repo`, `git_check_remote`, `git_push_to_remote`, `github_device_auth_start`, `github_device_auth_poll`, `github_get_auth`, `github_logout`, `github_create_repo` |
 | `commands/assistant.rs` | `assistant_save_token`, `assistant_chat`, `assistant_get_settings`, `assistant_switch_provider`, `assistant_reconnect`, `assistant_delete_provider_key`, `assistant_delete_all_keys`, `assistant_get_available_models`, `assistant_update_model`, `assistant_save_history`, `assistant_clear_history` |
@@ -78,7 +78,8 @@ WelcomeScreen → CloudSelectionScreen → DependenciesScreen
 | `dependencies.rs` | CLI detection and version checks for Terraform, Git, AWS, Azure, gcloud, Databricks |
 | `terraform.rs` | `parse_variables_tf()`, `generate_tfvars()`, `run_terraform()`, `check_state_exists()`, `stream_and_wait()`, `parse_importable_errors()`, `run_terraform_import()`, `import_and_retry_apply()`, `resolve_ncc_id()`, `resolve_azure_role_assignment_id()`, `build_import_env()`, `run_import_batch()`, `DEPLOYMENT_STATUS` / `CURRENT_PROCESS` globals |
 | `errors.rs` | `cli_not_found()`, `auth_expired()`, `not_logged_in()` helpers |
-| `commands/mod.rs` | `cancel_cli_login`; Module wiring, re-exports, `TEMPLATES_VERSION`, `INTERNAL_VARIABLES`, `CLI_LOGIN_PROCESS` (shared login PID), shared types (`Template`, `CloudCredentials`, `CloudPermissionCheck`, `MetastoreInfo`, `UCPermissionCheck`), helpers (`sanitize_deployment_name`, `http_client`, `databricks_accounts_host`, `lock_or_recover`, etc.) |
+| `proxy.rs` | System proxy detection (macOS `scutil` / Windows registry), `get_proxy_env_vars()` for Terraform child processes, `get_https_proxy()` for `http_client()` |
+| `commands/mod.rs` | `cancel_cli_login`; Module wiring, re-exports, `TEMPLATES_VERSION`, `INTERNAL_VARIABLES`, `CLI_LOGIN_PROCESS` (shared login PID), `acquire_login_slot()` / `release_login_slot()` for thread-safe login tracking, `silent_cmd()` (suppresses console windows on Windows), shared types (`Template`, `CloudCredentials`, `CloudPermissionCheck`, `MetastoreInfo`, `UCPermissionCheck`), helpers (`sanitize_deployment_name`, `http_client` (auto-injects proxy), `databricks_accounts_host`, `lock_or_recover`, etc.) |
 
 ## Templates
 
@@ -101,7 +102,7 @@ Templates live in `src-tauri/templates/{cloud}-{type}/` and are bundled as Tauri
 | `useDeployment` | Terraform deployment lifecycle (init → plan → apply), status polling |
 | `useAwsAuth` | AWS profiles, identity verification, SSO login, `loginInProgress` state, `cancelSsoLogin` |
 | `useAzureAuth` | Azure account, subscriptions, resource groups, VNets, `loginInProgress` state, `cancelLogin` |
-| `useGcpAuth` | GCP credential validation, service account creation |
+| `useGcpAuth` | GCP credential validation, browser login, project listing, service account creation |
 | `useDatabricksAuth` | Databricks profiles, SP creation, OAuth |
 | `useUnityCatalog` | UC config, metastore check, permission validation |
 | `useGitHub` | GitHub device auth, Git init/push, repo creation |
@@ -132,7 +133,7 @@ Templates live in `src-tauri/templates/{cloud}-{type}/` and are bundled as Tauri
 | File | Key types |
 |------|-----------|
 | `types/wizard.ts` | `AppScreen`, `DependencyStatus`, `Template`, `TerraformVariable`, `DeploymentStatus` |
-| `types/cloud.ts` | `CloudCredentials`, `AwsProfile`, `AwsIdentity`, `AzureSubscription`, `AzureAccount`, `AzureVnet`, `GcpValidation`, `CloudPermissionCheck` |
+| `types/cloud.ts` | `CloudCredentials`, `AwsProfile`, `AwsIdentity`, `AzureSubscription`, `AzureAccount`, `AzureVnet`, `GcpProject`, `GcpValidation`, `CloudPermissionCheck` |
 | `types/databricks.ts` | `DatabricksProfile`, `UnityCatalogConfig`, `MetastoreInfo`, `UCPermissionCheck` |
 | `types/assistant.ts` | `ChatMessage`, `AssistantSettings`, `ModelOption` |
 | `types/github.ts` | `GitRepoStatus`, `GitOperationResult`, `TfVarPreviewEntry`, `DeviceCodeResponse`, `DeviceAuthPollResult`, `GitHubAuthStatus`, `GitHubRepo` |
@@ -181,7 +182,7 @@ Templates live in `src-tauri/templates/{cloud}-{type}/` and are bundled as Tauri
 - Input validation: private `validate_*` functions before use
 - Shared types and helpers live in `commands/mod.rs`
 - **Mutex access**: Use `lock_or_recover()` from `commands/mod.rs` for safe mutex access — it recovers from poisoned mutexes and logs a warning instead of panicking
-- **Shared login PID**: `CLI_LOGIN_PROCESS` in `commands/mod.rs` is shared between `aws.rs` and `azure.rs` — do not declare per-module duplicates
+- **Shared login PID**: `CLI_LOGIN_PROCESS` in `commands/mod.rs` is shared between `aws.rs`, `azure.rs`, and `gcp.rs` — do not declare per-module duplicates. Use `acquire_login_slot()` / `release_login_slot()` to register and release login processes
 - **Regex compilation**: Use `lazy_static!` for `Regex::new()` — never compile regex patterns per function call
 - **Terraform helpers**: Keep Terraform I/O, import, and retry logic in `terraform.rs` — `deployment.rs` should call high-level helpers like `stream_and_wait()` and `import_and_retry_apply()`
 

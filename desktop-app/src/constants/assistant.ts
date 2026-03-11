@@ -32,10 +32,10 @@ export const ASSISTANT_PROVIDERS = {
 export const SCREEN_CONTEXT: Record<string, string> = {
   "welcome": "The user is on the welcome screen. They haven't started any configuration yet. They can click 'Get Started' to begin the deployment wizard.",
   "cloud-selection": "The user is choosing a cloud provider: AWS, Azure, or GCP. Each card shows supported features. They click a cloud to proceed.",
-  "dependencies": "The user is on the dependencies screen where the app checks if Terraform CLI and Databricks CLI are installed. Terraform can be auto-installed. Databricks CLI is optional but recommended.",
+  "dependencies": "The user is on the dependencies screen where the app checks if Terraform CLI and Databricks CLI are installed. Terraform can be auto-installed. Databricks CLI is optional but recommended. A connectivity check verifies access to registry.terraform.io, releases.hashicorp.com, and github.com — a warning appears if any are unreachable (e.g. corporate proxy).",
   "aws-credentials": "The user is configuring AWS credentials. Two modes: 'AWS CLI Profile' (recommended, uses ~/.aws/credentials or ~/.aws/config, supports SSO with non-blocking browser login and Cancel button) or 'Access Keys' (manual key entry). The app verifies identity and checks IAM permissions.",
-  "azure-credentials": "The user is configuring Azure credentials. Two modes: 'Azure CLI' (recommended, uses 'az login' with non-blocking browser login, 5-minute timeout, and Cancel button; once logged in the button says 'Switch Account') or 'Service Principal' (Tenant ID, Subscription ID, Client ID, Client Secret). After auth, they select a subscription and the app checks role assignments.",
-  "gcp-credentials": "The user is configuring GCP credentials. Two modes: 'Application Default Credentials' (recommended, uses gcloud + service account impersonation) or 'Service Account Key' (paste JSON key). The service account needs Owner role on the project.",
+  "azure-credentials": "The user is configuring Azure credentials. Two modes: 'Azure CLI' (recommended, click 'Sign in with Azure' for browser login with Cancel button; once logged in the button says 'Switch Account' and a 'Refresh' link detects CLI-based login) or 'Service Principal' (Tenant ID, Subscription ID, Client ID, Client Secret). After auth, they select a subscription (with 'Can't find your subscription?' help dialog) and the app checks role assignments.",
+  "gcp-credentials": "The user is configuring GCP credentials. Two modes: 'Application Default Credentials' (recommended, click 'Sign in with GCP' for browser login with Cancel button; once logged in the button says 'Switch Account' and a 'Refresh' link detects CLI-based login; project and SA fields appear only after authentication; project is selected from a dropdown or entered manually) or 'Service Account Key' (paste JSON key). The service account needs Owner role on the project.",
   "databricks-credentials": "The user is entering Databricks account credentials. For GCP/Azure-identity: just the Account ID. For AWS/Azure-SP: either a CLI profile from ~/.databrickscfg (service principal only) or Client ID + Client Secret. The Account ID is a UUID from the Databricks Account Console.",
   "template-selection": "The user is selecting a Terraform deployment template. There are two templates per cloud: a Standard template (aws-simple, azure-simple, gcp-simple) for straightforward deployments, and an SRA (Security Reference Architecture) template (aws-sra, azure-sra, gcp-sra) for enterprise/regulated environments with PrivateLink/PE/PSC, customer-managed encryption keys, and compliance controls. Each card shows features.",
   "configuration": "The user is filling in Terraform template variables. Standard templates have: workspace name, region, networking (VPC/VNet/subnet CIDRs), tags, and optional existing VPC/VNet settings. SRA templates have additional options: PrivateLink/PE/PSC configuration, CMK/CMEK encryption settings, compliance profiles, Security Analysis Tool (SAT), firewall rules (Azure), hub-spoke architecture with Databricks account resources like NCC and network policy (Azure), network hardening (GCP), and IP access lists (GCP). For Azure SRA, the 'Create Hub & Account Resources' toggle controls whether hub infrastructure and Databricks account-level resources (NCC, network policy, metastore) are created or must be provided as existing IDs. SAT configuration, Allowed FQDNs, and hub naming fields are only visible when hub creation is enabled (SAT is a hub-only feature). Values have validation rules.",
@@ -56,6 +56,7 @@ export const ASSISTANT_SAMPLE_QUESTIONS: Record<string, string[]> = {
   "dependencies": [
     "Is Databricks CLI required?",
     "Can the app auto-install dependencies?",
+    "What if I'm behind a corporate proxy?",
   ],
   "aws-credentials": [
     "Should I use SSO or access keys?",
@@ -70,7 +71,7 @@ export const ASSISTANT_SAMPLE_QUESTIONS: Record<string, string[]> = {
   "gcp-credentials": [
     "How does service account impersonation work?",
     "What GCP permissions are required?",
-    "Where do I get the service account JSON key?",
+    "How do I select a GCP project?",
   ],
   "databricks-credentials": [
     "Where do I find my Databricks Account ID?",

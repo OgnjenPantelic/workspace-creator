@@ -116,8 +116,6 @@ pub fn get_aws_profiles() -> Vec<AwsProfile> {
 /// Get AWS identity for a profile using `aws sts get-caller-identity`.
 #[tauri::command]
 pub async fn get_aws_identity(profile: String) -> Result<AwsIdentity, String> {
-    use std::process::Command;
-
     if !profile.is_empty() && !validate_aws_profile_name(&profile) {
         return Err("Invalid AWS profile name".to_string());
     }
@@ -125,7 +123,7 @@ pub async fn get_aws_identity(profile: String) -> Result<AwsIdentity, String> {
     let aws_path =
         dependencies::find_aws_cli_path().ok_or_else(|| crate::errors::cli_not_found("AWS CLI"))?;
 
-    let mut cmd = Command::new(&aws_path);
+    let mut cmd = super::silent_cmd(&aws_path);
     cmd.args(["sts", "get-caller-identity", "--output", "json"]);
 
     if !profile.is_empty() {
@@ -159,7 +157,6 @@ pub async fn get_aws_identity(profile: String) -> Result<AwsIdentity, String> {
 #[tauri::command]
 pub async fn aws_sso_login(profile: String) -> Result<String, String> {
     use super::CLI_LOGIN_PROCESS;
-    use std::process::Command;
     use std::time::{Duration, Instant};
 
     if !profile.is_empty() && !validate_aws_profile_name(&profile) {
@@ -169,7 +166,7 @@ pub async fn aws_sso_login(profile: String) -> Result<String, String> {
     let aws_path =
         dependencies::find_aws_cli_path().ok_or_else(|| crate::errors::cli_not_found("AWS CLI"))?;
 
-    let mut cmd = Command::new(&aws_path);
+    let mut cmd = super::silent_cmd(&aws_path);
     cmd.args(["sso", "login"]);
 
     if !profile.is_empty() {
@@ -182,9 +179,10 @@ pub async fn aws_sso_login(profile: String) -> Result<String, String> {
         .spawn()
         .map_err(|e| format!("Failed to run AWS CLI: {}", e))?;
 
-    if let Ok(mut proc) = CLI_LOGIN_PROCESS.lock() {
-        *proc = Some(child.id());
-    }
+    super::acquire_login_slot(child.id()).map_err(|e| {
+        let _ = child.kill();
+        e
+    })?;
 
     let timeout = Duration::from_secs(300);
     let start = Instant::now();
@@ -218,9 +216,7 @@ pub async fn aws_sso_login(profile: String) -> Result<String, String> {
         }
     };
 
-    if let Ok(mut proc) = CLI_LOGIN_PROCESS.lock() {
-        *proc = None;
-    }
+    super::release_login_slot();
 
     result
 }
@@ -299,7 +295,7 @@ pub async fn check_aws_permissions(
     };
 
     // Get caller identity to obtain the ARN
-    let mut identity_cmd = std::process::Command::new(&aws_cli);
+    let mut identity_cmd = super::silent_cmd(&aws_cli);
     identity_cmd.args(["sts", "get-caller-identity", "--output", "json"]);
     apply_aws_credentials(&mut identity_cmd, &credentials)?;
 
@@ -323,7 +319,7 @@ pub async fn check_aws_permissions(
         .ok_or("No ARN in identity response")?;
 
     // Build the simulate-principal-policy command
-    let mut simulate_cmd = std::process::Command::new(&aws_cli);
+    let mut simulate_cmd = super::silent_cmd(&aws_cli);
     simulate_cmd.args([
         "iam",
         "simulate-principal-policy",

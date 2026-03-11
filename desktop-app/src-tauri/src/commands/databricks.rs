@@ -17,6 +17,138 @@ const MSG_NO_METASTORE: &str = "No metastore found in region. A new one will be 
 const MSG_METASTORE_UNAVAILABLE: &str =
     "Metastore detection unavailable. Any existing metastore will be auto-detected during deployment.";
 
+/// Fetch Azure AD access token for Databricks resource.
+/// If token retrieval fails due to missing consent/interaction, trigger interactive login and retry.
+fn get_azure_databricks_token_with_fallback(
+    az_cli_path: &std::path::Path,
+    azure_tenant_id: Option<&str>,
+) -> Result<String, String> {
+    let mut token_args = vec![
+        "account".to_string(),
+        "get-access-token".to_string(),
+        "--resource".to_string(),
+        DATABRICKS_AZURE_RESOURCE_ID.to_string(),
+        "--query".to_string(),
+        "accessToken".to_string(),
+        "-o".to_string(),
+        "tsv".to_string(),
+    ];
+    if let Some(tid) = azure_tenant_id.filter(|t| !t.is_empty()) {
+        token_args.push("--tenant".to_string());
+        token_args.push(tid.to_string());
+    }
+
+    let token_output = super::silent_cmd(az_cli_path)
+        .args(&token_args)
+        .output()
+        .map_err(|e| format!("Failed to get Azure AD token: {}", e))?;
+
+    if token_output.status.success() {
+        let token = String::from_utf8_lossy(&token_output.stdout).trim().to_string();
+        if token.is_empty() {
+            return Err("Azure AD token response was empty.".to_string());
+        }
+        return Ok(token);
+    }
+
+    let stderr = String::from_utf8_lossy(&token_output.stderr).to_lowercase();
+    let needs_interactive_login = stderr.contains("interaction_required")
+        || stderr.contains("consent_required")
+        || stderr.contains("aadsts65001")
+        || stderr.contains("please run 'az login'")
+        || stderr.contains("reauthenticate");
+
+    if !needs_interactive_login {
+        return Err(format!(
+            "Failed to authenticate with Azure AD: {}",
+            String::from_utf8_lossy(&token_output.stderr).trim()
+        ));
+    }
+
+    let mut login_args = vec!["login".to_string()];
+    if let Some(tid) = azure_tenant_id.filter(|t| !t.is_empty()) {
+        login_args.push("--tenant".to_string());
+        login_args.push(tid.to_string());
+    }
+    login_args.push("--scope".to_string());
+    login_args.push(format!("{}/.default", DATABRICKS_AZURE_RESOURCE_ID));
+
+    let mut child = super::silent_cmd(az_cli_path)
+        .args(&login_args)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|e| format!("Failed to run interactive Azure login: {}", e))?;
+
+    super::acquire_login_slot(child.id()).map_err(|e| {
+        let _ = child.kill();
+        e
+    })?;
+
+    let timeout = std::time::Duration::from_secs(300);
+    let start = std::time::Instant::now();
+
+    let login_result: Result<(), String> = loop {
+        match child.try_wait() {
+            Ok(Some(status)) => {
+                let output = child
+                    .wait_with_output()
+                    .map_err(|e| format!("Failed to read output: {}", e))?;
+                if !status.success() {
+                    let was_cancelled =
+                        super::lock_or_recover(&super::CLI_LOGIN_PROCESS).is_none();
+                    if was_cancelled {
+                        break Err("LOGIN_CANCELLED".to_string());
+                    }
+                    let stderr = String::from_utf8_lossy(&output.stderr);
+                    let stderr_str = stderr.trim();
+                    if stderr_str.is_empty()
+                        || stderr_str.contains("Killed")
+                        || stderr_str.contains("terminated")
+                    {
+                        break Err("LOGIN_CANCELLED".to_string());
+                    }
+                    break Err(format!("Interactive Azure login failed: {}", stderr_str));
+                }
+                break Ok(());
+            }
+            Ok(None) => {
+                if start.elapsed() >= timeout {
+                    let _ = child.kill();
+                    break Err(
+                        "Azure consent login timed out after 5 minutes. Please try again."
+                            .to_string(),
+                    );
+                }
+                std::thread::sleep(std::time::Duration::from_millis(500));
+            }
+            Err(e) => break Err(format!("Error waiting for Azure CLI: {}", e)),
+        }
+    };
+
+    super::release_login_slot();
+
+    login_result?;
+
+    let retry_output = super::silent_cmd(az_cli_path)
+        .args(&token_args)
+        .output()
+        .map_err(|e| format!("Failed to get Azure AD token after login: {}", e))?;
+
+    if !retry_output.status.success() {
+        return Err(format!(
+            "Failed to authenticate with Azure AD after interactive login: {}",
+            String::from_utf8_lossy(&retry_output.stderr).trim()
+        ));
+    }
+
+    let token = String::from_utf8_lossy(&retry_output.stdout).trim().to_string();
+    if token.is_empty() {
+        return Err("Azure AD token response was empty after interactive login.".to_string());
+    }
+    Ok(token)
+}
+
 /// List Databricks CLI profiles for a given cloud.
 #[tauri::command]
 pub fn get_databricks_profiles(cloud: String) -> Vec<dependencies::DatabricksProfile> {
@@ -59,7 +191,7 @@ pub async fn databricks_cli_login(cloud: String, account_id: String) -> Result<S
         }
     }
 
-    let mut child = std::process::Command::new(&cli_path)
+    let mut child = super::silent_cmd(&cli_path)
         .args([
             "auth",
             "login",
@@ -314,7 +446,7 @@ pub async fn validate_databricks_profile(
     let accounts_host = databricks_accounts_host(&cloud);
 
     // Use the CLI to list users (requires account admin access)
-    let output = std::process::Command::new(&cli_path)
+    let output = super::silent_cmd(&cli_path)
         .args([
             "account", "users", "list",
             "--profile", &profile_name,
@@ -496,88 +628,107 @@ pub async fn check_uc_permissions(
             }
         };
         
-        // Get Azure AD token for Databricks
+        // Get Azure AD token for Databricks (runs in a blocking thread to avoid
+        // tying up the Tokio worker if interactive consent login is triggered).
         debug_log!("[check_uc_permissions] running: az account get-access-token ...");
-        let token_output = std::process::Command::new(&az_cli_path)
-            .args([
-                "account", "get-access-token",
-                "--resource", DATABRICKS_AZURE_RESOURCE_ID,
-                "--query", "accessToken",
-                "-o", "tsv"
-            ])
-            .output();
-        debug_log!("[check_uc_permissions] az CLI finished, success={}", token_output.as_ref().map(|o| o.status.success()).unwrap_or(false));
-        
-        if let Ok(output) = token_output {
-            if output.status.success() {
-                let azure_token = String::from_utf8_lossy(&output.stdout).trim().to_string();
-                
-                // Use the Azure AD token directly for metastores API (no token exchange needed)
-                let client = http_client()?;
-                    
-                let metastores_url = format!(
-                    "https://accounts.azuredatabricks.net/api/2.0/accounts/{}/metastores",
-                    account_id
-                );
-                
-                debug_log!(
-                    "[check_uc_permissions] Calling metastores API for account: {}",
-                    mask_sensitive_id(account_id)
-                );
-                
-                debug_log!("[check_uc_permissions] sending metastores GET to {}", metastores_url);
-                let metastores_response = client
-                    .get(&metastores_url)
-                    .bearer_auth(&azure_token)
-                    .send()
-                    .await;
-                debug_log!("[check_uc_permissions] metastores response received, ok={}", metastores_response.is_ok());
-                
-                if let Ok(metastores_resp) = metastores_response {
-                    if metastores_resp.status().is_success() {
-                        if let Ok(metastores_json) = metastores_resp.json::<serde_json::Value>().await {
-                            let metastores = metastores_json["metastores"].as_array();
-                            debug_log!(
-                                "[check_uc_permissions] Metastores API success: found {} metastore(s)",
-                                metastores.map(|arr| arr.len()).unwrap_or(0)
-                            );
+        let az_path_owned = az_cli_path.to_path_buf();
+        let tenant_id_owned = credentials.azure_tenant_id.clone();
+        let token_result = tokio::task::spawn_blocking(move || {
+            get_azure_databricks_token_with_fallback(
+                &az_path_owned,
+                tenant_id_owned.as_deref(),
+            )
+        })
+        .await
+        .map_err(|e| format!("Token task panicked: {}", e))?;
 
-                            if let Some(metastore) = find_metastore_for_region(metastores, &region) {
-                                let metastore_id = metastore["metastore_id"].as_str().unwrap_or("");
-                                let metastore_name = metastore["name"].as_str().unwrap_or("");
-                                let metastore_owner = metastore["owner"].as_str().unwrap_or("");
-                                
-                                let message = get_metastore_owner_info(metastore_owner, &credentials);
-                                
-                                return Ok(UCPermissionCheck {
-                                    metastore: MetastoreInfo {
-                                        exists: true,
-                                        metastore_id: Some(metastore_id.to_string()),
-                                        metastore_name: Some(metastore_name.to_string()),
-                                        region: Some(region),
-                                    },
-                                    has_create_catalog: false,
-                                    has_create_external_location: false,
-                                    has_create_storage_credential: false,
-                                    can_create_catalog: false,
-                                    message,
-                                });
-                            } else {
-                                return Ok(UCPermissionCheck {
-                                    metastore: MetastoreInfo {
-                                        exists: false,
-                                        metastore_id: None,
-                                        metastore_name: None,
-                                        region: Some(region),
-                                    },
-                                    has_create_catalog: true,
-                                    has_create_external_location: true,
-                                    has_create_storage_credential: true,
-                                    can_create_catalog: true,
-                                    message: MSG_NO_METASTORE.to_string(),
-                                });
-                            }
-                        }
+        let azure_token = match token_result {
+            Ok(token) => {
+                debug_log!("[check_uc_permissions] az token acquisition succeeded");
+                token
+            }
+            Err(e) => {
+                debug_log!("[check_uc_permissions] az token acquisition failed: {}", e);
+                return Ok(UCPermissionCheck {
+                    metastore: MetastoreInfo {
+                        exists: false,
+                        metastore_id: None,
+                        metastore_name: None,
+                        region: Some(region),
+                    },
+                    has_create_catalog: true,
+                    has_create_external_location: true,
+                    has_create_storage_credential: true,
+                    can_create_catalog: true,
+                    message: MSG_METASTORE_UNAVAILABLE.to_string(),
+                });
+            }
+        };
+        
+        // Use the Azure AD token directly for metastores API (no token exchange needed)
+        let client = http_client()?;
+            
+        let metastores_url = format!(
+            "https://accounts.azuredatabricks.net/api/2.0/accounts/{}/metastores",
+            account_id
+        );
+        
+        debug_log!(
+            "[check_uc_permissions] Calling metastores API for account: {}",
+            mask_sensitive_id(account_id)
+        );
+        
+        debug_log!("[check_uc_permissions] sending metastores GET to {}", metastores_url);
+        let metastores_response = client
+            .get(&metastores_url)
+            .bearer_auth(&azure_token)
+            .send()
+            .await;
+        debug_log!("[check_uc_permissions] metastores response received, ok={}", metastores_response.is_ok());
+        
+        if let Ok(metastores_resp) = metastores_response {
+            if metastores_resp.status().is_success() {
+                if let Ok(metastores_json) = metastores_resp.json::<serde_json::Value>().await {
+                    let metastores = metastores_json["metastores"].as_array();
+                    debug_log!(
+                        "[check_uc_permissions] Metastores API success: found {} metastore(s)",
+                        metastores.map(|arr| arr.len()).unwrap_or(0)
+                    );
+
+                    if let Some(metastore) = find_metastore_for_region(metastores, &region) {
+                        let metastore_id = metastore["metastore_id"].as_str().unwrap_or("");
+                        let metastore_name = metastore["name"].as_str().unwrap_or("");
+                        let metastore_owner = metastore["owner"].as_str().unwrap_or("");
+                        
+                        let message = get_metastore_owner_info(metastore_owner, &credentials);
+                        
+                        return Ok(UCPermissionCheck {
+                            metastore: MetastoreInfo {
+                                exists: true,
+                                metastore_id: Some(metastore_id.to_string()),
+                                metastore_name: Some(metastore_name.to_string()),
+                                region: Some(region),
+                            },
+                            has_create_catalog: false,
+                            has_create_external_location: false,
+                            has_create_storage_credential: false,
+                            can_create_catalog: false,
+                            message,
+                        });
+                    } else {
+                        return Ok(UCPermissionCheck {
+                            metastore: MetastoreInfo {
+                                exists: false,
+                                metastore_id: None,
+                                metastore_name: None,
+                                region: Some(region),
+                            },
+                            has_create_catalog: true,
+                            has_create_external_location: true,
+                            has_create_storage_credential: true,
+                            can_create_catalog: true,
+                            message: MSG_NO_METASTORE.to_string(),
+                        });
                     }
                 }
             }
@@ -613,7 +764,7 @@ pub async fn check_uc_permissions(
 
         if let Some(cli) = cli_path {
             debug_log!("[check_uc_permissions] running: databricks account metastores list -p {}", profile_name);
-            let output = std::process::Command::new(&cli)
+            let output = super::silent_cmd(&cli)
                 .args([
                     "account",
                     "metastores",
@@ -840,7 +991,7 @@ pub async fn check_uc_permissions(
                 .filter(|s| !s.is_empty())
             {
                 if let Some(gcloud_cli) = dependencies::find_gcloud_cli_path() {
-                    let mut id_token_cmd = std::process::Command::new(&gcloud_cli);
+                    let mut id_token_cmd = super::silent_cmd(&gcloud_cli);
                     id_token_cmd.args([
                         "auth",
                         "print-identity-token",
@@ -1209,6 +1360,7 @@ pub async fn check_uc_permissions(
 pub async fn validate_azure_databricks_identity(
     account_id: String,
     azure_account_email: String,
+    azure_tenant_id: Option<String>,
 ) -> Result<String, String> {
     // Get Azure AD token for Databricks using Azure CLI
     // Gracefully skip if CLI is not installed (consistent with cloud validation pattern)
@@ -1222,22 +1374,13 @@ pub async fn validate_azure_databricks_identity(
         }
     };
     
-    let token_output = std::process::Command::new(&az_cli_path)
-        .args([
-            "account", "get-access-token",
-            "--resource", DATABRICKS_AZURE_RESOURCE_ID,
-            "--query", "accessToken",
-            "-o", "tsv"
-        ])
-        .output()
-        .map_err(|e| format!("Failed to get Azure AD token: {}", e))?;
-    
-    if !token_output.status.success() {
-        let stderr = String::from_utf8_lossy(&token_output.stderr);
-        return Err(format!("Failed to authenticate with Azure AD: {}", stderr));
-    }
-    
-    let azure_token = String::from_utf8_lossy(&token_output.stdout).trim().to_string();
+    let az_path_owned = az_cli_path.to_path_buf();
+    let tenant_id_owned = azure_tenant_id.clone();
+    let azure_token = tokio::task::spawn_blocking(move || {
+        get_azure_databricks_token_with_fallback(&az_path_owned, tenant_id_owned.as_deref())
+    })
+    .await
+    .map_err(|e| format!("Token task panicked: {}", e))??;
     
     // Use the Azure AD token directly for SCIM API (no token exchange needed)
     let client = http_client()?;

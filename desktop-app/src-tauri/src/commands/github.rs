@@ -11,7 +11,6 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 use tauri::{AppHandle, Manager};
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -106,7 +105,7 @@ fn resolve_deployment_dir(app: &AppHandle, deployment_name: &str) -> Result<Path
 
 /// Run a git command in the given directory, returning (stdout, stderr, success).
 fn run_git(dir: &Path, args: &[&str]) -> Result<(String, String, bool), String> {
-    let output = Command::new("git")
+    let output = super::silent_cmd("git")
         .args(args)
         .current_dir(dir)
         .output()

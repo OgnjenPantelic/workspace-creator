@@ -582,6 +582,91 @@ input[type="checkbox"] {
   font-weight: 600;
 }
 
+/* Generic info tooltip (reusable) */
+.info-tooltip-wrapper {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.info-tooltip-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #35353a;
+  color: #a6a6a6;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: help;
+  flex-shrink: 0;
+}
+
+.info-tooltip-icon:hover {
+  background: #4a4a4f;
+  color: #fff;
+}
+
+.info-tooltip {
+  display: none;
+  position: absolute;
+  bottom: calc(100% + 10px);
+  right: 0;
+  background: #1e1e20;
+  border: 1px solid #35353a;
+  border-radius: 8px;
+  padding: 12px 14px;
+  z-index: 100;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+  white-space: normal;
+  width: 300px;
+}
+
+.info-tooltip-wrapper:hover .info-tooltip {
+  display: block;
+}
+
+.info-tooltip-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: #e0e0e0;
+  margin-bottom: 8px;
+}
+
+.info-tooltip-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 4px 0;
+  font-size: 12px;
+  border-bottom: 1px solid #2a2a2e;
+}
+
+.info-tooltip-row:last-child {
+  border-bottom: none;
+}
+
+.info-tooltip-status {
+  flex-shrink: 0;
+  font-size: 13px;
+  line-height: 1;
+  margin-top: 1px;
+}
+
+.info-tooltip-domain {
+  font-weight: 600;
+  color: #ccc;
+}
+
+.info-tooltip-desc {
+  color: #888;
+  font-size: 11px;
+  margin-top: 2px;
+}
+
 .two-column {
   display: grid;
   grid-template-columns: 1fr 1fr;

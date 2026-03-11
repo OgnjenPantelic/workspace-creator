@@ -474,7 +474,7 @@ export function DatabricksCredentialsScreen() {
 
         {authMode === "credentials" && (
           <>
-            <p style={{ color: "#888", marginBottom: "20px", marginTop: "16px" }}>
+            <p style={{ color: "#888", marginBottom: "12px", marginTop: "16px" }}>
               You can find these credentials in your{" "}
               <a 
                 href={selectedCloud === CLOUDS.AZURE ? "https://accounts.azuredatabricks.net" : selectedCloud === CLOUDS.GCP ? "https://accounts.gcp.databricks.com" : "https://accounts.cloud.databricks.com"} 
@@ -486,6 +486,15 @@ export function DatabricksCredentialsScreen() {
               </a>
               . You'll need a service principal with account admin privileges.
             </p>
+            <details style={{ marginBottom: "16px", fontSize: "13px" }}>
+              <summary style={{ cursor: "pointer", color: "#ff6b35" }}>
+                Need help creating a Databricks service principal?
+              </summary>
+              <p style={{ margin: "8px 0 0 0" }}>
+                In the Databricks Account Console, go to User Management → Service Principals → Add service principal.
+                Then create an OAuth secret and grant the Account admin role.
+              </p>
+            </details>
             
             <div className="form-group">
               <label>Account ID *</label>
@@ -532,9 +541,6 @@ export function DatabricksCredentialsScreen() {
               </div>
             </div>
 
-            <Alert type="info">
-              <strong>Don't have a service principal?</strong> In the Databricks Account Console, go to User Management → Service Principals → Add service principal. Then generate an OAuth secret and grant it account admin role.
-            </Alert>
           </>
         )}
       </div>

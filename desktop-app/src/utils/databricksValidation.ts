@@ -83,6 +83,7 @@ export function getDatabricksValidationCommand(
         args: {
           accountId: credentials.databricks_account_id,
           azureAccountEmail: credentials.azure_account_email,
+          azureTenantId: credentials.azure_tenant_id || null,
         },
       },
     };

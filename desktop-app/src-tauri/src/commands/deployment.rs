@@ -70,7 +70,7 @@ fn find_gcp_adc_path() -> Option<String> {
     }
 
     let gcloud = dependencies::find_gcloud_cli_path()?;
-    let account = std::process::Command::new(&gcloud)
+    let account = super::silent_cmd(&gcloud)
         .args(["config", "get-value", "account"])
         .output()
         .ok()
@@ -100,7 +100,7 @@ fn find_gcp_adc_path() -> Option<String> {
 fn refresh_gcp_user_token() -> Option<String> {
     let gcloud = dependencies::find_gcloud_cli_path()?;
 
-    let token_output = std::process::Command::new(&gcloud)
+    let token_output = super::silent_cmd(&gcloud)
         .args(["auth", "print-access-token"])
         .env("CLOUDSDK_AUTH_IMPERSONATE_SERVICE_ACCOUNT", "")
         .output()
@@ -282,6 +282,37 @@ pub async fn check_dependencies() -> HashMap<String, DependencyStatus> {
     })
     .await
     .unwrap_or_default()
+}
+
+/// Check connectivity to external services required by Terraform.
+///
+/// Returns a map of domain names to reachability status.  Used on the
+/// Dependencies screen to warn users early about network issues before
+/// `terraform init` is attempted.
+#[tauri::command]
+pub async fn check_terraform_connectivity() -> HashMap<String, bool> {
+    let client = match super::http_client() {
+        Ok(c) => c,
+        Err(_) => return HashMap::new(),
+    };
+
+    let urls: Vec<(&str, &str)> = vec![
+        ("registry.terraform.io", "https://registry.terraform.io/.well-known/terraform.json"),
+        ("releases.hashicorp.com", "https://releases.hashicorp.com"),
+        ("github.com", "https://github.com"),
+    ];
+
+    let mut results = HashMap::new();
+    for (name, url) in urls {
+        let reachable = client
+            .head(url)
+            .timeout(std::time::Duration::from_secs(10))
+            .send()
+            .await
+            .is_ok();
+        results.insert(name.to_string(), reachable);
+    }
+    results
 }
 
 /// Download and install Terraform.
@@ -530,8 +561,7 @@ pub async fn run_terraform_command(
         if let Some(pid) = *proc {
             #[cfg(unix)]
             {
-                use std::process::Command;
-                let output = Command::new("kill")
+                let output = super::silent_cmd("kill")
                     .args(["-0", &pid.to_string()])
                     .output();
                 if let Ok(out) = output {
@@ -675,8 +705,7 @@ pub fn cancel_deployment() -> Result<(), String> {
     if let Some(pid) = proc_id {
         #[cfg(unix)]
         {
-            use std::process::Command;
-            Command::new("kill")
+            super::silent_cmd("kill")
                 .args(["-TERM", &pid.to_string()])
                 .output()
                 .map_err(|e| e.to_string())?;
@@ -684,8 +713,7 @@ pub fn cancel_deployment() -> Result<(), String> {
 
         #[cfg(windows)]
         {
-            use std::process::Command;
-            Command::new("taskkill")
+            super::silent_cmd("taskkill")
                 .args(["/F", "/PID", &pid.to_string()])
                 .output()
                 .map_err(|e| e.to_string())?;

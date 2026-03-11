@@ -1,7 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::process::Command;
 use std::fs;
 use which::which;
 
@@ -143,7 +142,7 @@ pub fn check_databricks_cli() -> DependencyStatus {
     };
 
     if let Some(cli_path) = find_databricks_cli_path() {
-        if let Ok(output) = Command::new(&cli_path).arg("--version").output() {
+        if let Ok(output) = crate::commands::silent_cmd(&cli_path).arg("--version").output() {
             if output.status.success() {
                 status.installed = true;
                 if let Ok(stdout) = String::from_utf8(output.stdout) {
@@ -359,7 +358,7 @@ pub fn check_git() -> DependencyStatus {
     };
 
     if let Some(git_path) = find_git_path() {
-        if let Ok(output) = Command::new(&git_path).arg("--version").output() {
+        if let Ok(output) = crate::commands::silent_cmd(&git_path).arg("--version").output() {
             if output.status.success() {
                 status.installed = true;
                 if let Ok(stdout) = String::from_utf8(output.stdout) {
@@ -424,7 +423,7 @@ pub fn check_terraform() -> DependencyStatus {
     };
 
     if let Some(terraform_path) = find_terraform_path() {
-        if let Ok(output) = Command::new(&terraform_path).arg("version").output() {
+        if let Ok(output) = crate::commands::silent_cmd(&terraform_path).arg("version").output() {
             if output.status.success() {
                 status.installed = true;
                 if let Ok(stdout) = String::from_utf8(output.stdout) {
@@ -477,7 +476,7 @@ pub fn check_aws_cli() -> DependencyStatus {
     };
 
     if let Some(aws_path) = find_aws_cli_path() {
-        if let Ok(output) = Command::new(&aws_path).arg("--version").output() {
+        if let Ok(output) = crate::commands::silent_cmd(&aws_path).arg("--version").output() {
             if output.status.success() {
                 status.installed = true;
                 if let Ok(stdout) = String::from_utf8(output.stdout) {
@@ -526,7 +525,7 @@ pub fn check_azure_cli() -> DependencyStatus {
     };
 
     if let Some(az_path) = find_azure_cli_path() {
-        if let Ok(output) = Command::new(&az_path).arg("--version").output() {
+        if let Ok(output) = crate::commands::silent_cmd(&az_path).arg("--version").output() {
             if output.status.success() {
                 status.installed = true;
                 if let Ok(stdout) = String::from_utf8(output.stdout) {
@@ -582,7 +581,7 @@ pub fn check_gcloud_cli() -> DependencyStatus {
     };
 
     if let Some(gcloud_path) = find_gcloud_cli_path() {
-        if let Ok(output) = Command::new(&gcloud_path).arg("--version").output() {
+        if let Ok(output) = crate::commands::silent_cmd(&gcloud_path).arg("--version").output() {
             if output.status.success() {
                 status.installed = true;
                 if let Ok(stdout) = String::from_utf8(output.stdout) {

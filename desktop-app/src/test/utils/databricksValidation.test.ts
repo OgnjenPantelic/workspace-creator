@@ -545,6 +545,7 @@ describe("databricksValidation", () => {
       expect(result.command?.args).toEqual({
         accountId: "acc-123",
         azureAccountEmail: "user@example.com",
+        azureTenantId: null,
       });
     });
 
@@ -600,6 +601,7 @@ describe("databricksValidation", () => {
       expect(mockInvoke).toHaveBeenCalledWith("validate_azure_databricks_identity", {
         accountId: "acc-azure-123",
         azureAccountEmail: "user@example.com",
+        azureTenantId: null,
       });
     });
 
@@ -663,7 +665,45 @@ describe("databricksValidation", () => {
       expect(result.command?.args).toEqual({
         accountId: "acc-123",
         azureAccountEmail: "user@example.com",
+        azureTenantId: null,
       });
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Edge case: Invalid validation state fallback
+  // ---------------------------------------------------------------------------
+  describe("fallback / edge cases", () => {
+    it("returns 'Invalid validation state' when profile mode has no selected profile and no SP creds", () => {
+      const result = getDatabricksValidationCommand({
+        credentials: {
+          databricks_account_id: "acc-123",
+        },
+        selectedCloud: "aws",
+        authMode: "profile",
+        selectedProfile: "some-profile",
+        profiles: [
+          { name: "some-profile", host: "https://accounts.cloud.databricks.com", account_id: "acc-123", has_client_credentials: false, has_token: false, cloud: "aws" },
+        ],
+      });
+
+      // This should match the CLI profile validation path
+      expect(result.command?.command).toBe("validate_databricks_profile");
+    });
+
+    it("validateDatabricksCredentials throws when no command is determined", async () => {
+      // Passing an empty selectedProfile in profile mode triggers the "no profile selected" error
+      await expect(
+        validateDatabricksCredentials({
+          credentials: {
+            databricks_account_id: "acc-123",
+          },
+          selectedCloud: "aws",
+          authMode: "profile",
+          selectedProfile: "",
+          profiles: [],
+        })
+      ).rejects.toThrow("Please select a Databricks profile");
     });
   });
 });

@@ -1,3 +1,4 @@
+import { useState, useMemo } from "react";
 import { CloudCredentials } from "../../../types";
 import { Alert, PermissionWarningDialog, PasswordInput } from "../../ui";
 import { useWizard } from "../../../hooks/useWizard";
@@ -26,6 +27,24 @@ export function AzureCredentialsScreen() {
   const handleCredentialChange = (key: keyof CloudCredentials, value: string) => {
     setCredentials((prev) => ({ ...prev, [key]: value }));
   };
+
+  const [showSubscriptionHelp, setShowSubscriptionHelp] = useState(false);
+  const selectedSubscription = azureSubscriptions.find(
+    (sub) => sub.id === credentials.azure_subscription_id
+  );
+
+  const tenantGroups = useMemo(() => {
+    const tenantIds = [...new Set(azureSubscriptions.map((s) => s.tenant_id))];
+    if (tenantIds.length <= 1) return null;
+    const loginTenant = azureAccount?.tenant_id;
+    return tenantIds
+      .sort((a, b) => (a === loginTenant ? -1 : b === loginTenant ? 1 : a.localeCompare(b)))
+      .map((tid) => ({
+        tenantId: tid,
+        label: tid === loginTenant ? `Tenant: ${tid.slice(0, 8)}... (current)` : `Tenant: ${tid.slice(0, 8)}...`,
+        subscriptions: azureSubscriptions.filter((s) => s.tenant_id === tid),
+      }));
+  }, [azureSubscriptions, azureAccount?.tenant_id]);
 
   const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
   const validateUuid = (val: string | undefined) => !val?.trim() || uuidRegex.test(val.trim());
@@ -83,36 +102,34 @@ export function AzureCredentialsScreen() {
 
         {azureAuthMode === "cli" && (
           <>
-            <Alert type="info" style={{ marginBottom: "16px" }}>
-              <strong>How to set up Azure CLI:</strong>
-              <ol style={{ margin: "8px 0 0 0", paddingLeft: "20px", fontSize: "13px" }}>
+            <details style={{ marginBottom: "16px", fontSize: "13px" }}>
+              <summary style={{ cursor: "pointer", color: "#ff6b35" }}>
+                Need help setting up Azure CLI?
+              </summary>
+              <ol style={{ margin: "8px 0 0 0", paddingLeft: "20px" }}>
                 <li>Install the <a href="https://docs.microsoft.com/en-us/cli/azure/install-azure-cli" target="_blank" rel="noopener noreferrer" style={{ color: "#ff6b35" }}>Azure CLI</a>.</li>
-                <li>Run <code>az login</code> to authenticate.</li>
-                <li>Click <strong>Verify</strong> below to detect your subscriptions.</li>
+                <li>Click <strong>Sign in with Azure</strong> below, or run <code>az login</code> (optionally <code>az login --tenant YOUR_TENANT_ID</code>) in your terminal and click <strong>Refresh</strong>.</li>
               </ol>
-            </Alert>
+            </details>
             
             <div className="form-group">
-              <label>Status</label>
-              <div className="auth-status">
-                {azureLoginInProgress && <span className="spinner" />}
+              <label>
+                Status:{" "}
                 {azureLoginInProgress && (
-                  <span style={{ color: "#888" }}>Waiting for browser login...</span>
+                  <span style={{ fontWeight: "normal", color: "#888" }}>Waiting for browser login...</span>
                 )}
-                {!azureLoginInProgress && azureLoading && <span className="spinner" />}
-                {!azureLoginInProgress && azureAccount && (
-                  <span className="success">
-                    Logged in as: {azureAccount.user}
-                  </span>
+                {!azureLoginInProgress && azureLoading && (
+                  <span style={{ fontWeight: "normal", color: "#888" }}>Verifying...</span>
                 )}
-                {!azureLoginInProgress && azureAuthError && !azureLoading && !azureAccount && (
-                  <span className="error">{azureAuthError}</span>
+                {!azureLoginInProgress && !azureLoading && azureAccount && (
+                  <span className="success" style={{ fontWeight: "normal" }}>Logged in as {azureAccount.user}</span>
                 )}
-                {!azureLoginInProgress && !azureAccount && !azureAuthError && !azureLoading && (
-                  <span style={{ color: "#888" }}>Click Verify or Login to check credentials.</span>
+                {!azureLoginInProgress && !azureLoading && !azureAccount && (
+                  <span style={{ fontWeight: "normal", color: "#888" }}>Not signed in</span>
                 )}
-              </div>
-              <div style={{ marginTop: "8px", display: "flex", gap: "8px" }}>
+              </label>
+              {(azureLoginInProgress || azureLoading) && <span className="spinner" />}
+              <div style={{ marginTop: "8px" }}>
                 {azureLoginInProgress ? (
                   <button
                     type="button"
@@ -121,24 +138,47 @@ export function AzureCredentialsScreen() {
                   >
                     Cancel
                   </button>
-                ) : (
+                ) : azureAccount ? (
                   <>
                     <button
                       type="button"
                       className="btn btn-small btn-secondary"
-                      onClick={onCheckAccount}
+                      onClick={onLogin}
                       disabled={azureLoading || checkingPermissions}
                     >
-                      {azureLoading ? "Verifying..." : "Verify"}
+                      Switch Account
                     </button>
+                    <div style={{ marginTop: "8px", fontSize: "12px", color: "#888" }}>
+                      Switched accounts via CLI?{" "}
+                      <a
+                        href="#"
+                        onClick={(e) => { e.preventDefault(); onCheckAccount(); }}
+                        style={{ color: "#ff6b35" }}
+                      >
+                        {azureLoading ? "Checking..." : "Refresh"}
+                      </a>
+                    </div>
+                  </>
+                ) : (
+                  <>
                     <button
                       type="button"
                       className="btn btn-small"
                       onClick={onLogin}
                       disabled={azureLoading || checkingPermissions}
                     >
-                      {azureAccount ? "Switch Account" : "Login"}
+                      Sign in with Azure
                     </button>
+                    <div style={{ marginTop: "8px", fontSize: "12px", color: "#888" }}>
+                      Already logged in via CLI?{" "}
+                      <a
+                        href="#"
+                        onClick={(e) => { e.preventDefault(); onCheckAccount(); }}
+                        style={{ color: "#ff6b35" }}
+                      >
+                        {azureLoading ? "Checking..." : "Refresh"}
+                      </a>
+                    </div>
                   </>
                 )}
               </div>
@@ -152,21 +192,77 @@ export function AzureCredentialsScreen() {
                   onChange={(e) => onSubscriptionChange(e.target.value)}
                 >
                   <option value="">Select a subscription...</option>
-                  {azureSubscriptions.map((sub) => (
-                    <option key={sub.id} value={sub.id}>
-                      {sub.name} {sub.is_default ? "(default)" : ""}
-                    </option>
-                  ))}
+                  {tenantGroups ? (
+                    tenantGroups.map((group) => (
+                      <optgroup key={group.tenantId} label={group.label}>
+                        {group.subscriptions.map((sub) => (
+                          <option key={sub.id} value={sub.id}>
+                            {sub.name} {sub.is_default ? "(default)" : ""}
+                          </option>
+                        ))}
+                      </optgroup>
+                    ))
+                  ) : (
+                    azureSubscriptions.map((sub) => (
+                      <option key={sub.id} value={sub.id}>
+                        {sub.name} {sub.is_default ? "(default)" : ""}
+                      </option>
+                    ))
+                  )}
                 </select>
-                <div className="help-text">Select the Azure subscription to deploy resources to.</div>
+                <div className="help-text">
+                  Select the Azure subscription to deploy resources to.{" "}
+                  <a
+                    href="#"
+                    onClick={(e) => { e.preventDefault(); setShowSubscriptionHelp(true); }}
+                    style={{ color: "#ff6b35" }}
+                  >
+                    Can't find your subscription?
+                  </a>
+                </div>
+              </div>
+            )}
+
+            {showSubscriptionHelp && (
+              <div className="dialog-overlay">
+                <div className="dialog">
+                  <h3>Subscription Not Listed?</h3>
+                  <p style={{ fontSize: "13px", lineHeight: "1.6" }}>
+                    The dropdown shows all subscriptions accessible by your current Azure login, including guest tenants. If yours is missing:
+                  </p>
+                  <ol style={{ fontSize: "13px", lineHeight: "1.8", paddingLeft: "20px" }}>
+                    <li>
+                      <strong>No access:</strong> Ask your Azure admin to grant you at least <em>Contributor</em> role on the subscription.
+                    </li>
+                    <li>
+                      <strong>Subscription disabled:</strong> Check in the{" "}
+                      <a href="https://portal.azure.com/#blade/Microsoft_Azure_Billing/SubscriptionsBlade" target="_blank" rel="noopener noreferrer" style={{ color: "#ff6b35" }}>
+                        Azure Portal → Subscriptions
+                      </a>{" "}
+                      that the subscription is in an <em>Active</em> state.
+                    </li>
+                    <li>
+                      <strong>Tenant not linked:</strong> If your account hasn't been invited to the subscription's tenant, 
+                      try <code>az login --tenant YOUR_TENANT_ID</code> then click <strong>Refresh</strong> above.
+                    </li>
+                  </ol>
+                  <div className="dialog-buttons">
+                    <button onClick={() => setShowSubscriptionHelp(false)} className="primary">
+                      Got it
+                    </button>
+                  </div>
+                </div>
               </div>
             )}
 
             {azureAccount && (
               <Alert type="success" style={{ marginTop: "16px" }}>
-                Using subscription: <strong>{azureAccount.subscription_name}</strong>
+                Using subscription:{" "}
+                <strong>{selectedSubscription?.name || azureAccount.subscription_name || "Not selected"}</strong>
                 <br />
-                <span style={{ fontSize: "12px", opacity: 0.8 }}>Tenant: {azureAccount.tenant_id}</span>
+                <span style={{ fontSize: "12px", opacity: 0.8 }}>
+                  Tenant: {selectedSubscription?.tenant_id || credentials.azure_tenant_id || azureAccount.tenant_id}
+                </span>
               </Alert>
             )}
           </>
@@ -174,9 +270,11 @@ export function AzureCredentialsScreen() {
 
         {azureAuthMode === "service_principal" && (
           <>
-            <Alert type="info" style={{ marginBottom: "16px" }}>
-              <strong>How to create a service principal:</strong>
-              <ol style={{ margin: "8px 0 0 0", paddingLeft: "20px", fontSize: "13px" }}>
+            <details style={{ marginBottom: "16px", fontSize: "13px" }}>
+              <summary style={{ cursor: "pointer", color: "#ff6b35" }}>
+                Need help creating a service principal?
+              </summary>
+              <ol style={{ margin: "8px 0 0 0", paddingLeft: "20px" }}>
                 <li>Go to <a href="https://portal.azure.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade" target="_blank" rel="noopener noreferrer" style={{ color: "#ff6b35" }}>Azure Portal → App Registrations</a> and create a new registration.</li>
                 <li>Note the Application (Client) ID and Directory (Tenant) ID.</li>
                 <li>Under Certificates & Secrets, create a new client secret.</li>
@@ -184,7 +282,7 @@ export function AzureCredentialsScreen() {
               <p style={{ margin: "8px 0 0 0", fontSize: "12px", color: "#ffb347" }}>
                 ⚠️ Service principal credentials require manual rotation. Use Azure CLI when possible.
               </p>
-            </Alert>
+            </details>
             <div className="two-column">
               <div className="form-group">
                 <label>Tenant ID *</label>

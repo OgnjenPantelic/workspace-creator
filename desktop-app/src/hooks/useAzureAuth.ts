@@ -159,6 +159,16 @@ export function useAzureAuth(): UseAzureAuthReturn {
           azure_subscription_id: subscriptionId,
           azure_tenant_id: selected.tenant_id,
         }));
+        setAccount((prev) =>
+          prev
+            ? {
+                ...prev,
+                subscription_id: selected.id,
+                subscription_name: selected.name,
+                tenant_id: selected.tenant_id,
+              }
+            : prev
+        );
         loadResourceGroups(subscriptionId);
       }
     },

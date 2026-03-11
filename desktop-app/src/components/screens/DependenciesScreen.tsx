@@ -31,9 +31,24 @@ const RefreshIcon = () => (
   </svg>
 );
 
+const WarningIcon = () => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--warning, #ffb347)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+    <line x1="12" y1="9" x2="12" y2="13" />
+    <line x1="12" y1="17" x2="12.01" y2="17" />
+  </svg>
+);
+
+const CONNECTIVITY_DOMAINS = [
+  { key: "registry.terraform.io", label: "registry.terraform.io", description: "Provider & module registry" },
+  { key: "releases.hashicorp.com", label: "releases.hashicorp.com", description: "Provider binary downloads" },
+  { key: "github.com", label: "github.com", description: "Module source code (e.g. AWS VPC)" },
+];
+
 const DependenciesScreen: React.FC = () => {
   const {
     dependencies,
+    connectivity,
     selectedCloud,
     error,
     installingTerraform,
@@ -61,6 +76,12 @@ const DependenciesScreen: React.FC = () => {
       setRechecking(false);
     }
   };
+
+  const hasConnectivityResults = Object.keys(connectivity).length > 0;
+  const unreachableDomains = hasConnectivityResults
+    ? Object.entries(connectivity).filter(([, reachable]) => !reachable).map(([name]) => name)
+    : [];
+  const hasConnectivityIssue = unreachableDomains.length > 0;
 
   const StatusIcon = ({ installed, optional }: { installed?: boolean; optional?: boolean }) => {
     if (installed) return <CheckIcon />;
@@ -194,7 +215,52 @@ const DependenciesScreen: React.FC = () => {
             )}
           </div>
         </div>
+        {hasConnectivityResults && (
+          <div className="dependency-item">
+            <div className="dependency-info">
+              {hasConnectivityIssue ? <WarningIcon /> : <CheckIcon />}
+              <div>
+                <div className="dependency-name">Internet Connectivity</div>
+                {hasConnectivityIssue ? (
+                  <div className="dependency-note" style={{ color: "var(--warning, #ffb347)" }}>
+                    Unreachable: {unreachableDomains.join(", ")}
+                  </div>
+                ) : (
+                  <div className="dependency-version">All required services reachable</div>
+                )}
+              </div>
+            </div>
+            <span className="info-tooltip-wrapper">
+              <span className="dependency-badge">Info</span>
+              <span className="info-tooltip-icon">?</span>
+              <span className="info-tooltip">
+                <div className="info-tooltip-title">Terraform requires these services</div>
+                {CONNECTIVITY_DOMAINS.map(({ key, label, description }) => (
+                  <div className="info-tooltip-row" key={key}>
+                    <span className="info-tooltip-status">
+                      {connectivity[key] === true ? "✓" : connectivity[key] === false ? "✗" : "–"}
+                    </span>
+                    <div>
+                      <div className="info-tooltip-domain">{label}</div>
+                      <div className="info-tooltip-desc">{description}</div>
+                    </div>
+                  </div>
+                ))}
+              </span>
+            </span>
+          </div>
+        )}
       </div>
+
+        {hasConnectivityIssue && (
+          <div className="alert alert-warning">
+            <strong>Network connectivity issue detected:</strong> Terraform requires access to{" "}
+            <strong>{unreachableDomains.join(", ")}</strong> to download providers and modules.
+            {unreachableDomains.includes("github.com") && " GitHub is required for AWS template VPC modules."}
+            {" "}If you're behind a corporate proxy, ensure your system proxy settings are configured correctly.
+            Deployments may fail during initialization.
+          </div>
+        )}
 
         {!terraformDep?.installed && (
           <div className="alert alert-warning">

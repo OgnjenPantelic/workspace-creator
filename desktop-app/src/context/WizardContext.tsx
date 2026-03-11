@@ -46,6 +46,7 @@ export interface WizardContextValue {
 
   // Dependencies
   dependencies: Record<string, DependencyStatus>;
+  connectivity: Record<string, boolean>;
   installingTerraform: boolean;
   installTerraform: () => Promise<void>;
   recheckDependencies: () => Promise<void>;
@@ -137,6 +138,7 @@ export function WizardProvider({ children }: { children: ReactNode }) {
   // -- State ----------------------------------------------------------------
   const [screen, setScreen] = useState<AppScreen>("welcome");
   const [dependencies, setDependencies] = useState<Record<string, DependencyStatus>>({});
+  const [connectivity, setConnectivity] = useState<Record<string, boolean>>({});
   const [templates, setTemplates] = useState<Template[]>([]);
   const [selectedCloud, setSelectedCloud] = useState<string>("");
   const [selectedTemplate, setSelectedTemplate] = useState<Template | null>(null);
@@ -203,8 +205,12 @@ export function WizardProvider({ children }: { children: ReactNode }) {
   // -- Helpers & handlers ---------------------------------------------------
   const checkDependencies = async () => {
     try {
-      const deps = await invoke<Record<string, DependencyStatus>>("check_dependencies");
+      const [deps, conn] = await Promise.all([
+        invoke<Record<string, DependencyStatus>>("check_dependencies"),
+        invoke<Record<string, boolean>>("check_terraform_connectivity").catch(() => ({})),
+      ]);
       setDependencies(deps);
+      setConnectivity(conn);
     } catch (e) {
       console.warn("Failed to check dependencies:", e);
     }
@@ -412,8 +418,15 @@ export function WizardProvider({ children }: { children: ReactNode }) {
   const continueFromCloudWithWarning = useCallback(() => {
     setShowPermissionWarning(false);
     setPermissionWarningAcknowledged(false);
-    setScreen("databricks-credentials");
-  }, []);
+    if (selectedCloud === CLOUDS.AZURE && azure.authMode === "cli") {
+      setShowAzureAdminDialog(true);
+    } else if (selectedCloud === CLOUDS.AZURE) {
+      setCredentials((prev) => ({ ...prev, azure_databricks_use_identity: false }));
+      setScreen("databricks-credentials");
+    } else {
+      setScreen("databricks-credentials");
+    }
+  }, [selectedCloud, azure.authMode]);
 
   // -- AWS wrappers ---------------------------------------------------------
   const loadAwsProfiles = useCallback(async () => {
@@ -626,7 +639,7 @@ export function WizardProvider({ children }: { children: ReactNode }) {
       setAzureValidationAttempted,
       () => validateAzureCredentials({ authMode: azure.authMode, account: azure.account, credentials }),
       () => {
-        if (azure.authMode === "cli" && credentials.azure_account_email) {
+        if (azure.authMode === "cli") {
           setShowAzureAdminDialog(true);
         } else {
           setCredentials((prev) => ({ ...prev, azure_databricks_use_identity: false }));
@@ -651,7 +664,7 @@ export function WizardProvider({ children }: { children: ReactNode }) {
   const value: WizardContextValue = {
     screen, setScreen, goBack,
     selectedCloud, loadingCloud, selectCloud, cancelCloudSelection,
-    dependencies, installingTerraform, installTerraform, recheckDependencies: checkDependencies, continueFromDependencies,
+    dependencies, connectivity, installingTerraform, installTerraform, recheckDependencies: checkDependencies, continueFromDependencies,
     templates, selectedTemplate, loadingTemplate, selectTemplate,
     credentials, setCredentials,
     aws, azure, gcp,
@@ -678,9 +691,9 @@ export function WizardProvider({ children }: { children: ReactNode }) {
   return (
     <WizardContext.Provider value={value}>
       {children}
-      {showAzureAdminDialog && credentials.azure_account_email && (
+      {showAzureAdminDialog && (
         <AzureAdminDialog
-          userEmail={credentials.azure_account_email}
+          userEmail={credentials.azure_account_email || "your Azure account"}
           onYes={handleAzureAdminDialogYes}
           onNo={handleAzureAdminDialogNo}
         />

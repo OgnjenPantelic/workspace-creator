@@ -1,6 +1,6 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { CloudCredentials, GcpValidation } from "../../../types";
+import { CloudCredentials, GcpProject, GcpValidation } from "../../../types";
 import { Alert, PermissionWarningDialog } from "../../ui";
 import { useWizard } from "../../../hooks/useWizard";
 
@@ -165,6 +165,63 @@ export function GcpCredentialsScreen() {
   };
 
   const [validationAttempted, setValidationAttempted] = useState(false);
+  const [gcpLoginInProgress, setGcpLoginInProgress] = useState(false);
+  const [gcpProjects, setGcpProjects] = useState<GcpProject[]>([]);
+  const [manualProjectEntry, setManualProjectEntry] = useState(false);
+
+  const loadGcpProjects = useCallback(async () => {
+    try {
+      const projects = await invoke<GcpProject[]>("get_gcp_projects");
+      setGcpProjects(projects);
+      if (projects.length > 0 && !credentials.gcp_project_id) {
+        const detected = gcpValidation?.project_id;
+        const match = detected && projects.find(p => p.project_id === detected);
+        if (match) {
+          handleCredentialChange("gcp_project_id", match.project_id);
+        }
+      }
+    } catch {
+      setGcpProjects([]);
+    }
+  }, [credentials.gcp_project_id, gcpValidation?.project_id]);
+
+  const hasLoadedProjects = useRef(false);
+  useEffect(() => {
+    if (gcpValidation?.account && !hasLoadedProjects.current) {
+      hasLoadedProjects.current = true;
+      loadGcpProjects();
+    }
+  }, [gcpValidation?.account, loadGcpProjects]);
+
+  const handleGcpLogin = async () => {
+    setGcpLoading(true);
+    setGcpLoginInProgress(true);
+    setGcpAuthError(null);
+    try {
+      await invoke("gcp_login");
+      hasLoadedProjects.current = false;
+      await checkGcpCredentials();
+      await loadGcpProjects();
+    } catch (e: unknown) {
+      const msg = String(e);
+      if (msg !== "LOGIN_CANCELLED") {
+        setGcpAuthError(msg);
+      }
+    } finally {
+      setGcpLoginInProgress(false);
+      setGcpLoading(false);
+    }
+  };
+
+  const cancelGcpLogin = async () => {
+    try {
+      await invoke("cancel_cli_login");
+    } catch {
+      // Best-effort cancellation
+    }
+    setGcpLoginInProgress(false);
+    setGcpLoading(false);
+  };
 
   // ADC mode: validate project + service account, check impersonation match
   // Service account mode: validate project + JSON key
@@ -218,7 +275,7 @@ export function GcpCredentialsScreen() {
         }
         if (validation.impersonated_account !== credentials.gcp_service_account_email?.trim()) {
           setGcpAuthError(
-            `Impersonation mismatch: gcloud is impersonating '${validation.impersonated_account}' but you entered '${credentials.gcp_service_account_email}'.\n\nClick 'Verify' to auto-fill the correct service account.`
+            `Impersonation mismatch: gcloud is impersonating '${validation.impersonated_account}' but you entered '${credentials.gcp_service_account_email}'.\n\nClick 'Refresh' to auto-fill the correct service account.`
           );
           setGcpLoading(false);
           return;
@@ -309,7 +366,9 @@ export function GcpCredentialsScreen() {
       </p>
 
       {gcpLoading && (
-        <Alert type="loading">Verifying GCP credentials...</Alert>
+        <Alert type="loading">
+          {gcpLoginInProgress ? "Signing in with GCP..." : "Verifying GCP credentials..."}
+        </Alert>
       )}
 
       {gcpAuthError && <Alert type="error" style={{ whiteSpace: "pre-line" }}>{gcpAuthError}</Alert>}
@@ -348,60 +407,156 @@ export function GcpCredentialsScreen() {
 
         {gcpAuthMode === "adc" && (
           <>
-            <Alert type="info" style={{ marginBottom: "16px", fontSize: "13px" }}>
-              <strong>Getting started:</strong> Run <code>gcloud auth login</code> to authenticate, then click <strong>Verify</strong>. You'll also need to set up a service account with impersonation using the options below.
-            </Alert>
-            
+            <details style={{ marginBottom: "16px", fontSize: "13px" }}>
+              <summary style={{ cursor: "pointer", color: "#ff6b35" }}>
+                Getting started with GCP Application Default Credentials
+              </summary>
+              <div style={{ marginTop: "8px" }}>
+                Click <strong>Sign in with GCP</strong> below, or run <code>gcloud auth login</code> in your terminal and click <strong>Refresh</strong>. You'll also need to set up a service account with impersonation using the options below.
+              </div>
+            </details>
+
             <div className="form-group">
-              <label>Status</label>
-              <div className="auth-status">
-                {gcpLoading && <span className="spinner" />}
-                {gcpValidation?.account && !gcpLoading && (
-                  <span className="success">
-                    Authenticated as: {gcpValidation.account}
+              <label>
+                Status:{" "}
+                {gcpLoading && (
+                  <span style={{ fontWeight: "normal", color: "#888" }}>
+                    {gcpLoginInProgress ? "Waiting for browser login..." : "Verifying..."}
                   </span>
                 )}
-                {gcpValidation?.valid && !gcpValidation.account && !gcpLoading && (
-                  <span className="success">Credentials validated</span>
+                {!gcpLoading && gcpValidation?.account && (
+                  <span className="success" style={{ fontWeight: "normal" }}>
+                    Authenticated as {gcpValidation.account}
+                  </span>
                 )}
-                {!gcpValidation && !gcpAuthError && !gcpLoading && (
-                  <span style={{ color: "#888" }}>Click Verify to check credentials.</span>
+                {!gcpLoading && !gcpValidation?.account && (
+                  <span style={{ fontWeight: "normal", color: "#888" }}>
+                    {gcpValidation ? "No account detected" : "Not signed in"}
+                  </span>
                 )}
-              </div>
-              <div style={{ marginTop: "8px", display: "flex", gap: "8px" }}>
-                <button
-                  type="button"
-                  className="btn btn-small btn-secondary"
-                  onClick={checkGcpCredentials}
-                  disabled={gcpLoading || gcpCheckingPermissions}
-                >
-                  {gcpLoading ? "Verifying..." : "Verify"}
-                </button>
+              </label>
+              {(gcpLoginInProgress || gcpLoading) && <span className="spinner" />}
+              <div style={{ marginTop: "8px" }}>
+                {gcpLoginInProgress ? (
+                  <button
+                    type="button"
+                    className="btn btn-small btn-secondary"
+                    onClick={cancelGcpLogin}
+                  >
+                    Cancel
+                  </button>
+                ) : gcpValidation?.account ? (
+                  <>
+                    <button
+                      type="button"
+                      className="btn btn-small btn-secondary"
+                      onClick={handleGcpLogin}
+                      disabled={gcpLoading || gcpCheckingPermissions}
+                    >
+                      Switch Account
+                    </button>
+                    <div style={{ marginTop: "8px", fontSize: "12px", color: "#888" }}>
+                      Switched accounts via CLI?{" "}
+                      <a
+                        href="#"
+                        onClick={(e) => { e.preventDefault(); checkGcpCredentials(); }}
+                        style={{ color: "#ff6b35" }}
+                      >
+                        {gcpLoading ? "Checking..." : "Refresh"}
+                      </a>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      className="btn btn-small"
+                      onClick={handleGcpLogin}
+                      disabled={gcpLoading || gcpCheckingPermissions}
+                    >
+                      Sign in with GCP
+                    </button>
+                    <div style={{ marginTop: "8px", fontSize: "12px", color: "#888" }}>
+                      Already logged in via CLI?{" "}
+                      <a
+                        href="#"
+                        onClick={(e) => { e.preventDefault(); checkGcpCredentials(); }}
+                        style={{ color: "#ff6b35" }}
+                      >
+                        {gcpLoading ? "Checking..." : "Refresh"}
+                      </a>
+                    </div>
+                  </>
+                )}
               </div>
             </div>
 
+            {gcpValidation?.account && (
+            <>
             <div className="form-group" style={{ marginTop: "16px" }}>
-              <label>Project ID *</label>
-              <input
-                type="text"
-                autoCapitalize="none"
-                autoCorrect="off"
-                spellCheck={false}
-                value={credentials.gcp_project_id || ""}
-                onChange={(e) => handleCredentialChange("gcp_project_id", e.target.value)}
-                placeholder="my-gcp-project"
-                disabled={gcpLoading}
-              />
-              <div className="help-text">
-                The GCP project where resources will be deployed.
-                {gcpValidation?.project_id && !credentials.gcp_project_id && (
-                  <span> (Detected: {gcpValidation.project_id})</span>
-                )}
-              </div>
+              <label>Project *</label>
+              {gcpProjects.length > 0 && !manualProjectEntry ? (
+                <>
+                  <select
+                    value={credentials.gcp_project_id || ""}
+                    onChange={(e) => handleCredentialChange("gcp_project_id", e.target.value)}
+                    disabled={gcpLoading}
+                  >
+                    <option value="">Select a project...</option>
+                    {gcpProjects.map((p) => (
+                      <option key={p.project_id} value={p.project_id}>
+                        {p.name} ({p.project_id})
+                      </option>
+                    ))}
+                  </select>
+                  <div className="help-text">
+                    The GCP project where resources will be deployed.{" "}
+                    <a
+                      href="#"
+                      onClick={(e) => { e.preventDefault(); setManualProjectEntry(true); }}
+                      style={{ color: "#ff6b35" }}
+                    >
+                      Enter ID manually
+                    </a>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <input
+                    type="text"
+                    autoCapitalize="none"
+                    autoCorrect="off"
+                    spellCheck={false}
+                    value={credentials.gcp_project_id || ""}
+                    onChange={(e) => handleCredentialChange("gcp_project_id", e.target.value)}
+                    placeholder="my-gcp-project"
+                    disabled={gcpLoading}
+                  />
+                  <div className="help-text">
+                    The GCP project where resources will be deployed.
+                    {gcpProjects.length > 0 && (
+                      <>
+                        {" "}
+                        <a
+                          href="#"
+                          onClick={(e) => { e.preventDefault(); setManualProjectEntry(false); }}
+                          style={{ color: "#ff6b35" }}
+                        >
+                          Select from list
+                        </a>
+                      </>
+                    )}
+                  </div>
+                </>
+              )}
             </div>
 
-            {/* Service Account Section */}
-            <div className="form-group" style={{ marginTop: "16px" }}>
+            <h3 style={{ marginTop: "24px", marginBottom: "4px" }}>Service Account Impersonation</h3>
+            <p style={{ fontSize: "13px", color: "#888", margin: "0 0 12px 0" }}>
+              A service account with deployment permissions is required.
+            </p>
+
+            <div className="form-group">
               <label>Service Account *</label>
               
               {gcpValidation?.impersonated_account && 
@@ -669,6 +824,8 @@ export function GcpCredentialsScreen() {
                 {gcpValidation.message}
               </Alert>
             )}
+            </>
+            )}
           </>
         )}
 
@@ -679,7 +836,7 @@ export function GcpCredentialsScreen() {
             </Alert>
             
             <div className="form-group">
-              <label>Project ID *</label>
+              <label>Project *</label>
               <input
                 type="text"
                 autoCapitalize="none"
