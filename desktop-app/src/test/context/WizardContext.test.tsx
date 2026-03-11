@@ -1,9 +1,9 @@
-import { render, screen, act, waitFor } from "@testing-library/react";
+import { render, act, waitFor } from "@testing-library/react";
 import { invoke } from "@tauri-apps/api/core";
 import { WizardProvider } from "../../context/WizardContext";
 import { useWizard } from "../../hooks/useWizard";
 import { CLOUDS } from "../../constants";
-import { AppScreen, Template, CloudCredentials } from "../../types";
+import { AppScreen, Template } from "../../types";
 
 const mockInvoke = vi.mocked(invoke);
 
@@ -48,12 +48,6 @@ function TestConsumer({ onRender }: { onRender: (ctx: ReturnType<typeof useWizar
   const ctx = useWizard();
   onRender(ctx);
   return null;
-}
-
-function ContextReader({ pickField }: { pickField: string }) {
-  const ctx = useWizard();
-  const val = (ctx as any)[pickField];
-  return <div data-testid="value">{typeof val === "object" ? JSON.stringify(val) : String(val)}</div>;
 }
 
 function ActionButton({
