@@ -6,7 +6,7 @@ Desktop app for deploying Databricks workspaces on AWS, Azure, and GCP using Ter
 
 ## Architecture
 
-![Databricks Deployer — Architecture](../../markitecture.png)
+![Databricks Deployer — Architecture](docs/markitecture.png)
 
 The app is built with [Tauri 2](https://v2.tauri.app/) — a React/TypeScript frontend communicates with a Rust backend via Tauri's `invoke` IPC mechanism. The Rust backend shells out to the Terraform CLI for all infrastructure operations and handles credential validation, encryption, and cloud API calls. Terraform templates (`.tf` files in `src-tauri/templates/`) are bundled into the app binary via Tauri's resource system. On first launch — or when `TEMPLATES_VERSION` in `src-tauri/src/commands/mod.rs` changes — the backend extracts them to the app data directory. The frontend registers 70+ invoke handlers in `src-tauri/src/lib.rs`.
 
