@@ -123,8 +123,8 @@ data "aws_iam_policy_document" "s3_vpc_endpoint_policy" {
     }
 
     resources = [
-      "arn:${local.computed_aws_partition}:s3:::${var.resource_prefix}-catalog-${module.databricks_mws_workspace.workspace_id}/*",
-      "arn:${local.computed_aws_partition}:s3:::${var.resource_prefix}-catalog-${module.databricks_mws_workspace.workspace_id}"
+      "arn:${local.computed_aws_partition}:s3:::${local.effective_uc_storage_name}/*",
+      "arn:${local.computed_aws_partition}:s3:::${local.effective_uc_storage_name}"
     ]
 
     condition {

@@ -709,4 +709,8 @@ locals {
       config.secondary_bucket : config.primary_bucket
     )
   }
+
+  effective_uc_storage_name = var.uc_storage_name != "" ? var.uc_storage_name : (
+    var.uc_catalog_name != "" ? var.uc_catalog_name : "${var.resource_prefix}-catalog-${module.databricks_mws_workspace.workspace_id}"
+  )
 }
