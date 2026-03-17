@@ -1047,7 +1047,9 @@ input[type="checkbox"] {
 .welcome-features-list {
   list-style: none;
   padding: 0;
-  margin: 16px 0 0 0;
+  margin: 16px auto 0;
+  text-align: left;
+  display: inline-block;
 }
 
 .welcome-features-list li {
@@ -1073,7 +1075,15 @@ input[type="checkbox"] {
   display: block;
   margin-top: 16px;
   color: var(--text-muted);
-  font-size: 0.8em;
+  font-size: 0.95em;
+}
+
+.welcome-update-link {
+  color: var(--accent);
+  cursor: pointer;
+  text-decoration: underline;
+  margin-left: 8px;
+  font-size: 0.95em;
 }
 
 @keyframes welcome-fade-up {
@@ -1851,6 +1861,39 @@ input[type="checkbox"] {
   opacity: 0;
   pointer-events: none;
   transform: scale(0.8);
+}
+
+/* Hint tooltip pointing to the assistant toggle */
+.assistant-hint {
+  position: fixed;
+  bottom: 80px;
+  right: 20px;
+  background: #2a2a3e;
+  color: #e0e0e0;
+  padding: 10px 16px;
+  border-radius: 8px;
+  font-size: 0.85em;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  border: 1px solid #ff6b35;
+  z-index: 901;
+  white-space: nowrap;
+  animation: assistant-hint-in 0.4s ease forwards;
+}
+
+.assistant-hint-arrow {
+  position: absolute;
+  bottom: -8px;
+  right: 18px;
+  width: 0;
+  height: 0;
+  border-left: 8px solid transparent;
+  border-right: 8px solid transparent;
+  border-top: 8px solid #ff6b35;
+}
+
+@keyframes assistant-hint-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 
 /* Panel — slides in from the right */
