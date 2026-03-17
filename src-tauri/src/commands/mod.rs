@@ -210,6 +210,7 @@ pub(crate) const INTERNAL_VARIABLES: &[&str] = &[
     "hub_workspace_url_override",
     "spoke_workspace_url_override",
     "workspace_url_override",
+    "workspace_sku",
 ];
 
 // ─── Helper Functions ───────────────────────────────────────────────────────

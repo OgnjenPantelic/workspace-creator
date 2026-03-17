@@ -3142,3 +3142,26 @@ input[type="checkbox"] {
   background: var(--text-muted);
 }
 
+/* Resource group filterable dropdown */
+.rg-dropdown {
+  max-height: 180px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--card-bg);
+  margin-top: 4px;
+}
+.rg-dropdown-item {
+  padding: 8px 12px;
+  cursor: pointer;
+  font-size: 0.9em;
+  border-bottom: 1px solid var(--border);
+  transition: background 0.15s;
+}
+.rg-dropdown-item:last-child {
+  border-bottom: none;
+}
+.rg-dropdown-item:hover {
+  background: rgba(255, 140, 50, 0.12);
+}
+
