@@ -90,7 +90,6 @@ export function ConfigurationScreen() {
   const [resourceConflicts, setResourceConflicts] = useState<ResourceNameConflict[]>([]);
   const [showConflictDialog, setShowConflictDialog] = useState(false);
   const [checkingNames, setCheckingNames] = useState(false);
-  const [rgFilter, setRgFilter] = useState("");
 
   const proceedAfterCheck = useCallback(() => {
     if (skipsCatalogScreen) {
@@ -998,7 +997,6 @@ export function ConfigurationScreen() {
               value={formValues[variable.name] || ""}
               onChange={(e) => {
                 const val = e.target.value;
-                setRgFilter(val);
                 const isExisting = azureResourceGroups.some(rg => rg.name === val);
                 setFormValues(prev => ({
                   ...prev,
@@ -1007,7 +1005,6 @@ export function ConfigurationScreen() {
                   create_new_resource_group: !isExisting,
                 }));
               }}
-              onFocus={() => setRgFilter(formValues[variable.name] as string || "")}
               placeholder="Type to filter or enter new resource group name"
               className={formSubmitAttempted && formValidation.missingFields.includes(variable.name) ? "input-error" : ""}
             />
@@ -1032,7 +1029,6 @@ export function ConfigurationScreen() {
                           vnet_resource_group_name: rg.name,
                           create_new_resource_group: false,
                         }));
-                        setRgFilter("");
                       }}
                     >
                       {rg.name} <span style={{ color: "var(--text-muted)" }}>({rg.location})</span>
