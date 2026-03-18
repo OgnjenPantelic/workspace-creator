@@ -904,6 +904,21 @@ export function ConfigurationScreen() {
     const fieldValue = formValues[variable.name] || "";
     const fieldParsed = isSubnetField ? parseCidr(fieldValue) : null;
 
+    if (variable.name === "create_new_vnet" && isBoolField(variable)) {
+      return (
+        <div key={variable.name} className="form-group" style={{ gridColumn: "1 / -1" }}>
+          <label className="checkbox-label" style={{ fontSize: "1em" }}>
+            <input
+              type="checkbox"
+              checked={formValues[variable.name] === "true" || formValues[variable.name] === true}
+              onChange={(e) => handleFormChange(variable.name, e.target.checked)}
+            />
+            {formatVariableName(variable.name)}
+          </label>
+        </div>
+      );
+    }
+
     return (
       <div key={variable.name} className="form-group" style={variable.name === "tags" ? { gridColumn: "1 / -1" } : undefined}>
         <label>
@@ -974,45 +989,59 @@ export function ConfigurationScreen() {
           </select>
         ) : variable.name === "resource_group_name" && azureResourceGroups.length > 0 ? (
           <>
-            <select
-              value={!formValues.create_new_resource_group && azureResourceGroups.some(rg => rg.name === formValues[variable.name]) ? formValues[variable.name] : ""}
-              onChange={(e) => {
-                const val = e.target.value;
-                setFormValues(prev => ({
-                  ...prev,
-                  [variable.name]: val,
-                  vnet_resource_group_name: val,
-                  create_new_resource_group: val === "" ? true : false,
-                }));
-              }}
-              className={formSubmitAttempted && formValidation.missingFields.includes(variable.name) ? "input-error" : ""}
-            >
-              <option value="">Select existing or create new below</option>
-              {azureResourceGroups.map((rg) => (
-                <option key={rg.name} value={rg.name}>
-                  {rg.name} ({rg.location})
-                </option>
-              ))}
-            </select>
             <input
               type="text"
               autoCapitalize="none"
               autoCorrect="off"
               spellCheck={false}
-              value={formValues.create_new_resource_group ? (formValues[variable.name] || "") : ""}
+              value={formValues[variable.name] || ""}
               onChange={(e) => {
                 const val = e.target.value;
+                const isExisting = azureResourceGroups.some(rg => rg.name === val);
                 setFormValues(prev => ({
                   ...prev,
                   [variable.name]: val,
                   vnet_resource_group_name: val,
-                  create_new_resource_group: true,
+                  create_new_resource_group: !isExisting,
                 }));
               }}
-              placeholder="Or enter new resource group name"
-              style={{ marginTop: "8px" }}
+              placeholder="Type to filter or enter new resource group name"
               className={formSubmitAttempted && formValidation.missingFields.includes(variable.name) ? "input-error" : ""}
             />
+            {(() => {
+              const filterVal = (formValues[variable.name] as string || "").toLowerCase();
+              const filtered = azureResourceGroups.filter(rg =>
+                rg.name.toLowerCase().includes(filterVal) || rg.location.toLowerCase().includes(filterVal)
+              );
+              const exactMatch = azureResourceGroups.some(rg => rg.name === formValues[variable.name]);
+              if (filtered.length === 0 || exactMatch) return null;
+              return (
+                <div className="rg-dropdown">
+                  {filtered.map((rg) => (
+                    <div
+                      key={rg.name}
+                      className="rg-dropdown-item"
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        setFormValues(prev => ({
+                          ...prev,
+                          [variable.name]: rg.name,
+                          vnet_resource_group_name: rg.name,
+                          create_new_resource_group: false,
+                        }));
+                      }}
+                    >
+                      {rg.name} <span style={{ color: "var(--text-muted)" }}>({rg.location})</span>
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
+            {formValues[variable.name] && !azureResourceGroups.some(rg => rg.name === formValues[variable.name]) && (
+              <div className="help-text" style={{ color: "#4ec9b0", marginTop: "4px" }}>
+                New resource group will be created
+              </div>
+            )}
           </>
         ) : variable.name === "existing_resource_group_name" && azureResourceGroups.length > 0 ? (
           <select
@@ -1216,8 +1245,29 @@ export function ConfigurationScreen() {
           </div>
         )}
         {(VARIABLE_DESCRIPTION_OVERRIDES[variable.name] || variable.description) && !formValidation.fieldErrors[variable.name] && (
-          <div className="help-text">
+          <div className="help-text" style={isSubnetField ? { display: "flex", alignItems: "center", gap: "6px" } : undefined}>
             <LinkifyText text={VARIABLE_DESCRIPTION_OVERRIDES[variable.name] || variable.description} />
+            {isSubnetField && fieldParsed && variable.name !== "public_subnet_cidr" && (
+              <span className="cidr-tooltip-wrapper">
+                <span className="cidr-tooltip-icon">?</span>
+                <span className="cidr-tooltip">
+                  <span className="cidr-tooltip-title">IP Address Requirements</span>
+                  <span className="cidr-tooltip-subtitle">Nodes = The maximum number of nodes that can be active <strong>concurrently</strong> in your workspace.</span>
+                  <table className="cidr-tooltip-table">
+                    <thead><tr><th>Subnet</th><th>IPs</th><th>Nodes</th></tr></thead>
+                    <tbody>
+                      {[17,18,19,20,21,22,23,24,25,26].map(p => (
+                        <tr key={p} className={p === fieldParsed.prefixLen ? "cidr-tooltip-active" : ""}>
+                          <td>/{p}</td>
+                          <td>{Math.pow(2, 32 - p).toLocaleString()}</td>
+                          <td>{getUsableNodes(p).toLocaleString()}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </span>
+              </span>
+            )}
           </div>
         )}
         {variable.name === "cidr" && vnetOverlap && (
@@ -1256,35 +1306,6 @@ export function ConfigurationScreen() {
           if (!warn) return null;
           return <div className="help-text" style={{ color: "#ffb347" }}>{warn}</div>;
         })()}
-        {isSubnetField && fieldParsed && (
-          <div className="help-text" style={{ color: "#4ec9b0", display: "flex", alignItems: "center", gap: "6px" }}>
-            {variable.name === "public_subnet_cidr"
-              ? `Suggested: fixed /${fieldParsed.prefixLen} for NAT gateway.`
-              : variable.name.startsWith("private_subnet_")
-                ? `Suggested: /${fieldParsed.prefixLen} (1/4 of VPC). Each subnet scales with VPC size.`
-                : `Auto-filled with /${fieldParsed.prefixLen} prefix (2 higher than VNet), leaving space for future expansion.`
-            }
-            <span className="cidr-tooltip-wrapper">
-              <span className="cidr-tooltip-icon">?</span>
-              <span className="cidr-tooltip">
-                <span className="cidr-tooltip-title">IP Address Requirements</span>
-                <span className="cidr-tooltip-subtitle">Nodes = The maximum number of nodes that can be active <strong>concurrently</strong> in your workspace.</span>
-                <table className="cidr-tooltip-table">
-                  <thead><tr><th>Subnet</th><th>IPs</th><th>Nodes</th></tr></thead>
-                  <tbody>
-                    {[17,18,19,20,21,22,23,24,25,26].map(p => (
-                      <tr key={p} className={p === fieldParsed.prefixLen ? "cidr-tooltip-active" : ""}>
-                        <td>/{p}</td>
-                        <td>{Math.pow(2, 32 - p).toLocaleString()}</td>
-                        <td>{getUsableNodes(p).toLocaleString()}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </span>
-            </span>
-          </div>
-        )}
       </div>
     );
   };
