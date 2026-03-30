@@ -31,16 +31,20 @@ Requires a Databricks Account ID (UUID from Account Console). For GCP and Azure-
 
 Each template is a Terraform configuration. Fields on the Configuration screen map to Terraform variables. Credentials, cloud auth details, and Unity Catalog settings are collected in other wizard steps and passed automatically.
 
-Each cloud has two template options:
+AWS and GCP each have two template options (Standard + SRA). Azure has three (Standard, Private Link, SRA).
 - **Standard** — Quick setup for dev/test or straightforward production. Simpler networking (public subnets with NAT), default cloud encryption, fewer options.
+- **Private Link (Azure only)** — Adds backend and DBFS private endpoints, private DNS zones, and serverless NCC on top of the Standard VNet-injection model. Simpler than SRA (no hub-spoke, no firewall, no CMK) but provides private connectivity for control plane and storage traffic.
 - **SRA (Security Reference Architecture)** — Enterprise-grade for production and regulated environments. No public internet (PrivateLink / Private Endpoints / PSC), customer-managed encryption keys (CMK/CMEK), compliance controls (Compliance Security Profile, SAT, audit logs), modular architecture.
 
-- **AWS Standard**: Creates VPC, S3 root bucket, cross-account IAM role, workspace.
+- **AWS Standard**: Creates VPC with VPC endpoints (S3 gateway, STS interface, Kinesis Streams interface), S3 root bucket, cross-account IAM role, workspace.
 - **Azure Standard**: Creates resource group, Storage Account, VNet, NSG, workspace.
+- **Azure Private Link**: Creates VNet with private endpoints (backend + DBFS), private DNS zones, serverless NCC, NAT gateway, workspace.
 - **GCP Standard**: Creates VPC, GCS bucket, workspace.
 - **AWS SRA**: Adds PrivateLink, CMK (KMS), NCC, network policy, audit logs, compliance controls.
 - **Azure SRA**: Hub-spoke VNet, Private Endpoints, Azure Firewall, Key Vault CMK, NCC, network policy, SAT.
 - **GCP SRA**: Hardened firewall rules, optional PSC, CMEK, IP access lists, Private Access Settings.
+
+**Note:** SRA templates (aws-sra, azure-sra, gcp-sra) are currently **in development** and not yet selectable in the app.
 
 All templates require **Admin Email** (must exist in Databricks account; prepopulated on Azure/GCP).
 
@@ -108,7 +112,7 @@ Each template is a Terraform configuration. The fields on the Configuration scre
 All templates also require **Admin Email** — the email of the workspace admin (must already exist in the Databricks account). On Azure and GCP this is prepopulated from the authenticated cloud identity; on AWS it must be entered manually.
 
 ## AWS Standard BYOVPC
-Creates: VPC with subnets/NAT/security groups, S3 root bucket, cross-account IAM role, Databricks workspace.
+Creates: VPC with subnets/NAT/security groups, VPC endpoints (S3 gateway, STS interface, Kinesis Streams interface), S3 root bucket, cross-account IAM role, Databricks workspace.
 
 ### Workspace
 - **Workspace Name** — prefix for all resource names (default: "databricks").
@@ -143,6 +147,27 @@ Creates: Resource group, Azure Storage Account, VNet with subnets, NSG, Databric
 ### Tags
 - **Resource Tags** — optional key-value pairs for cost tracking.
 
+## Azure Private Link
+Creates: Resource group (new or existing), VNet with 3 subnets (public, private, private-link), NAT gateway, NSG (outbound rules for AAD + Azure Front Door), backend private endpoint (control plane UI/API), DBFS private endpoints (blob + dfs), private DNS zones (privatelink.azuredatabricks.net, privatelink.dfs.core.windows.net, privatelink.blob.core.windows.net), Network Connectivity Config (NCC) for serverless compute with auto-approved private endpoint rules, Premium Databricks workspace with VNet injection, metastore auto-detect/create/assign.
+
+This template sits between Azure Standard and Azure SRA in complexity. It adds private endpoints and DNS zones for secure backend and storage connectivity without the hub-spoke architecture, Azure Firewall, or CMK encryption of the SRA template.
+
+### Workspace
+- **Workspace Name** (`prefix`) — display name for the Databricks workspace.
+- **Resources Prefix** (`resource_prefix`) — prefix for Azure resource names (VNet, NSG, subnets). Also used to derive the DBFS storage account name (alphanumeric only, 3-24 chars). Must be 1-40 characters containing only a-z, 0-9, hyphens, and dots.
+- **Region** — Azure region.
+- **Admin Email** — prepopulated from Azure identity.
+- **Resource Group** — toggle to create a new resource group or use an existing one. When creating new, enter a resource group name. When using existing, select from available resource groups.
+
+### Network Configuration
+- **VNet CIDR** (`cidr_dp`) — address space for the data plane VNet (default: 10.0.0.0/16). Must be between /16 and /24.
+- **Workspace Subnet CIDRs** (`subnet_workspace_cidrs`) — two CIDRs [public, private] for Databricks compute subnets. Each must be within the VNet CIDR and at least /26.
+- **Private Endpoint Subnet CIDR** (`subnet_private_endpoint_cidr`) — CIDR for the Private Link subnet hosting control plane and DBFS private endpoints. Must be within the VNet CIDR.
+- **Service Endpoints** (`subnets_service_endpoints`) — optional Azure service endpoints to associate with workspace subnets (e.g. Microsoft.Storage, Microsoft.KeyVault). Presented as a checkbox list.
+
+### Tags
+- **Resource Tags** — optional key-value pairs for cost tracking.
+
 ## GCP Standard BYOVPC
 Creates: VPC with Databricks subnet, GCS bucket, Databricks workspace.
 
@@ -157,10 +182,13 @@ Creates: VPC with Databricks subnet, GCS bucket, Databricks workspace.
 ### Tags
 - **Resource Tags** — optional key-value labels for GCP resources.
 
-## Standard vs SRA Templates
-Each cloud has two template options:
+## Standard vs Private Link vs SRA Templates
+Each cloud has Standard and SRA templates. Azure also has a Private Link template that sits in between.
 - **Standard** — Quick setup for dev/test or straightforward production environments. Simpler networking (public subnets with NAT), default cloud encryption, fewer configuration options.
+- **Private Link (Azure only)** — Adds backend and DBFS private endpoints, private DNS zones, and serverless NCC on top of VNet injection. No hub-spoke architecture, firewall, or CMK — simpler than SRA but provides private connectivity for control plane and storage traffic.
 - **SRA (Security Reference Architecture)** — Enterprise-grade deployment for production and regulated environments. No public internet access (uses PrivateLink / Private Endpoints / PSC), customer-managed encryption keys (CMK/CMEK), compliance controls (Compliance Security Profile, Security Analysis Tool, audit logs), modular architecture. More configuration complexity but much stronger security posture.
+
+**Note:** SRA templates (aws-sra, azure-sra, gcp-sra) are currently **in development** and are grayed out / not selectable in the template selection screen.
 
 ## AWS Security Reference Architecture (SRA)
 Creates: VPC with PrivateLink endpoints (backend REST + SCC relay), CMK encryption (KMS keys for managed services and managed disks), cross-account IAM role, S3 root bucket with restrictive policy, Databricks workspace, network connectivity configuration (NCC) for serverless private endpoints, network policy for serverless egress control, audit log delivery, Unity Catalog with isolated catalog. Optionally enables SAT and Compliance Security Profile.
