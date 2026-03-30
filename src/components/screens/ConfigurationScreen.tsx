@@ -68,10 +68,12 @@ export function ConfigurationScreen() {
     setScreen, goBack,
     startDeploymentWizard,
     credentials,
+    aws,
     azure,
   } = useWizard();
   const azureResourceGroups = azure.resourceGroups;
   const azureVnets = azure.vnets;
+  const awsVpcs = aws.vpcs;
   const [showTags, setShowTags] = usePersistedCollapse("tags", false);
   const [showSecurity, setShowSecurity] = usePersistedCollapse("security", false);
   const [showMetastore, setShowMetastore] = usePersistedCollapse("metastore", false);
@@ -262,20 +264,37 @@ export function ConfigurationScreen() {
   };
 
   // Check if the entered VNet CIDR overlaps with any existing Azure VNets
-  const vnetOverlap = useMemo(() => {
-    if (selectedCloud !== CLOUDS.AZURE || !formValues["cidr"]) return null;
-    const enteredCidr = formValues["cidr"];
-    if (!parseCidr(enteredCidr)) return null;
-
+  const findVnetOverlap = (cidr: string) => {
+    if (!parseCidr(cidr)) return null;
     for (const vnet of azureVnets) {
       for (const prefix of vnet.address_prefixes) {
-        if (cidrsOverlap(enteredCidr, prefix)) {
+        if (cidrsOverlap(cidr, prefix)) {
           return { vnetName: vnet.name, resourceGroup: vnet.resource_group, cidr: prefix };
         }
       }
     }
     return null;
+  };
+
+  const vnetOverlap = useMemo(() => {
+    if (selectedCloud !== CLOUDS.AZURE || !formValues["cidr"]) return null;
+    return findVnetOverlap(formValues["cidr"]);
   }, [selectedCloud, formValues["cidr"], azureVnets]);
+
+  const vnetOverlapPl = useMemo(() => {
+    if (selectedTemplate?.id !== "azure-pl-sts" || !formValues["cidr_dp"]) return null;
+    return findVnetOverlap(formValues["cidr_dp"]);
+  }, [selectedTemplate?.id, formValues["cidr_dp"], azureVnets]);
+
+  const vnetOverlapSraHub = useMemo(() => {
+    if (selectedTemplate?.id !== "azure-sra" || !formValues["hub_vnet_cidr"]) return null;
+    return findVnetOverlap(formValues["hub_vnet_cidr"]);
+  }, [selectedTemplate?.id, formValues["hub_vnet_cidr"], azureVnets]);
+
+  const vnetOverlapSraWs = useMemo(() => {
+    if (selectedTemplate?.id !== "azure-sra" || !formValues["workspace_vnet__cidr"]) return null;
+    return findVnetOverlap(formValues["workspace_vnet__cidr"]);
+  }, [selectedTemplate?.id, formValues["workspace_vnet__cidr"], azureVnets]);
 
   const subnetOverlap = useMemo(() => {
     if (selectedCloud !== CLOUDS.AZURE) return false;
@@ -292,6 +311,26 @@ export function ConfigurationScreen() {
     if (!hub || !ws || !parseCidr(hub) || !parseCidr(ws)) return false;
     return cidrsOverlap(hub, ws);
   }, [selectedTemplate?.id, formValues["hub_vnet_cidr"], formValues["workspace_vnet__cidr"]]);
+
+  const findVpcOverlap = (cidr: string) => {
+    if (!parseCidr(cidr)) return null;
+    for (const vpc of awsVpcs) {
+      if (cidrsOverlap(cidr, vpc.cidr_block)) {
+        return { vpcId: vpc.vpc_id, name: vpc.name, cidr: vpc.cidr_block };
+      }
+    }
+    return null;
+  };
+
+  const vpcOverlap = useMemo(() => {
+    if (selectedCloud !== CLOUDS.AWS || !formValues["cidr_block"]) return null;
+    return findVpcOverlap(formValues["cidr_block"]);
+  }, [selectedCloud, formValues["cidr_block"], awsVpcs]);
+
+  const vpcOverlapSra = useMemo(() => {
+    if (selectedTemplate?.id !== "aws-sra" || !formValues["vpc_cidr_range"]) return null;
+    return findVpcOverlap(formValues["vpc_cidr_range"]);
+  }, [selectedTemplate?.id, formValues["vpc_cidr_range"], awsVpcs]);
 
   // Field visibility and validation depend on cloud and network toggles:
   // - AWS: createNewVpc controls new VPC vs existing VPC fields
@@ -846,6 +885,11 @@ export function ConfigurationScreen() {
           ⚠ Workspace VNet CIDR overlaps with the Hub VNet CIDR. They must be non-overlapping ranges.
         </div>
       )}
+      {sf.key === "workspace_vnet__cidr" && !formValidation.fieldErrors["workspace_vnet__cidr"] && vnetOverlapSraWs && (
+        <div className="help-text" style={{ color: "#ffb347" }}>
+          ⚠ This range overlaps with existing VNet &quot;{vnetOverlapSraWs.vnetName}&quot; ({vnetOverlapSraWs.cidr}) in {vnetOverlapSraWs.resourceGroup}
+        </div>
+      )}
     </div>
   );};
 
@@ -1377,6 +1421,21 @@ export function ConfigurationScreen() {
             ⚠ This range overlaps with existing VNet &quot;{vnetOverlap.vnetName}&quot; ({vnetOverlap.cidr}) in {vnetOverlap.resourceGroup}
           </div>
         )}
+        {variable.name === "cidr_dp" && vnetOverlapPl && (
+          <div className="help-text" style={{ color: "#ffb347" }}>
+            ⚠ This range overlaps with existing VNet &quot;{vnetOverlapPl.vnetName}&quot; ({vnetOverlapPl.cidr}) in {vnetOverlapPl.resourceGroup}
+          </div>
+        )}
+        {variable.name === "cidr_block" && vpcOverlap && (
+          <div className="help-text" style={{ color: "#ffb347" }}>
+            ⚠ This range overlaps with existing VPC{vpcOverlap.name ? ` "${vpcOverlap.name}"` : ""} ({vpcOverlap.cidr}) {vpcOverlap.vpcId}
+          </div>
+        )}
+        {variable.name === "vpc_cidr_range" && vpcOverlapSra && (
+          <div className="help-text" style={{ color: "#ffb347" }}>
+            ⚠ This range overlaps with existing VPC{vpcOverlapSra.name ? ` "${vpcOverlapSra.name}"` : ""} ({vpcOverlapSra.cidr}) {vpcOverlapSra.vpcId}
+          </div>
+        )}
         {(variable.name === "subnet_public_cidr" || variable.name === "subnet_private_cidr") && subnetOverlap && (
           <div className="help-text" style={{ color: "#ffb347" }}>
             ⚠ Public and private subnet CIDRs overlap. They must be non-overlapping ranges within the VNet.
@@ -1385,6 +1444,11 @@ export function ConfigurationScreen() {
         {variable.name === "hub_vnet_cidr" && !formValidation.fieldErrors["hub_vnet_cidr"] && sraVnetOverlap && (
           <div className="help-text" style={{ color: "#ffb347" }}>
             ⚠ Hub VNet CIDR overlaps with the Workspace VNet CIDR. They must be non-overlapping ranges.
+          </div>
+        )}
+        {variable.name === "hub_vnet_cidr" && !formValidation.fieldErrors["hub_vnet_cidr"] && vnetOverlapSraHub && (
+          <div className="help-text" style={{ color: "#ffb347" }}>
+            ⚠ This range overlaps with existing VNet &quot;{vnetOverlapSraHub.vnetName}&quot; ({vnetOverlapSraHub.cidr}) in {vnetOverlapSraHub.resourceGroup}
           </div>
         )}
         {!formValidation.fieldErrors[variable.name] && (() => {
