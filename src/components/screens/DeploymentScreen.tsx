@@ -697,6 +697,15 @@ export function DeploymentScreen() {
                 </button>
               )}
             </div>
+            {status?.can_rollback && (
+              <button
+                className="btn"
+                onClick={() => setConfirmAction("rollback")}
+                style={{ marginTop: "16px", background: "transparent", border: "1px solid #666", color: "var(--text-muted)", fontSize: "13px", padding: "8px 16px" }}
+              >
+                Destroy Deployed Resources
+              </button>
+            )}
           </div>
         )}
       </div>
