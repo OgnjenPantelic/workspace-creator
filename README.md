@@ -44,14 +44,15 @@ Desktop app for deploying Databricks workspaces on AWS, Azure, and GCP using Ter
 ## Quick Start
 
 1. Download from [Releases](https://github.com/OgnjenPantelic/workspace-creator/releases) or [build from source](#build--run)
-2. Select cloud provider (AWS, Azure, or GCP)
-3. Verify dependencies (Terraform, Git, cloud CLIs)
-4. Enter cloud credentials (CLI profile, service principal, or ADC)
-5. Enter Databricks credentials (profile, service principal, or Azure identity)
-6. Select deployment template
-7. Configure workspace (name, region, networking)
-8. Configure Unity Catalog (optional — auto-detects existing metastore)
-9. Review and deploy
+2. On macOS, run xattr -d com.apple.quarantine '/Applications/Databricks Deployer.app', as the app is not yet code-signed by Apple.
+3. Select cloud provider (AWS, Azure, or GCP)
+4. Verify dependencies (Terraform, Git, cloud CLIs)
+5. Enter cloud credentials (CLI profile, service principal, or ADC)
+6. Enter Databricks credentials (profile, service principal, or Azure identity)
+7. Select deployment template
+8. Configure workspace (name, region, networking)
+9. Configure Unity Catalog (optional — auto-detects existing metastore)
+10. Review and deploy
 
 ## Prerequisites
 
